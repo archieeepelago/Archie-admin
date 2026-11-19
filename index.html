@@ -2087,9 +2087,38 @@ create policy "Allow public read/write orders" on public.orders
           ? 'bg-emerald-500'
           : (status === 'WAITING_QRIS' ? 'bg-[#D83162]' : (status === 'QRIS_SENT' ? 'bg-amber-500' : 'bg-purple-600'));
 
+        const rawPlanStr = String(order.plan_label || '');
+        const delivMatch = rawPlanStr.match(/DELIV_AT:([^|\]]+)/i);
+        const delivIso = delivMatch && delivMatch[1] ? delivMatch[1].trim() : '';
+        const delivFmt = delivIso ? (() => {
+          try {
+            const p = new Intl.DateTimeFormat('en-GB', { timeZone:'Asia/Jakarta', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }).formatToParts(new Date(delivIso));
+            const g = t => (p.find(x => x.type === t) || {}).value || '00';
+            return `${g('day')}/${g('month')} ${g('hour')}:${g('minute')}:${g('second')} WIB`;
+          } catch (_) { return delivIso; }
+        })() : '';
+
+        const expMs = Number(wInfo.expiresAtMs) || 0;
+        const createdMs = order.created_at ? new Date(order.created_at).getTime() : (Date.now() - 86400000);
+        const totalSpanMs = Math.max(86400000, expMs - createdMs);
+        const remMsInit = Math.max(0, expMs - Date.now());
+        const pctInit = expMs > 0 ? Math.min(100, Math.max(0, Math.round((remMsInit / totalSpanMs) * 100))) : 0;
+        const barClrInit = remMsInit <= 0 ? 'bg-rose-500' : (remMsInit <= 86400000 ? 'bg-amber-400' : 'bg-gradient-to-r from-emerald-400 to-teal-500');
+
         const warrantyControlHtml = `
           <div class="rounded-2xl bg-[#FAFAFC] border border-[#EFE2E8] p-3 space-y-2.5">
-            <!-- Row A: Segmented Garansi Switch + Live Countdown + WA Actions -->
+            <!-- LIVE TIMER + DURATION PROGRESS BAR (SYNCED WITH WEB GARANSI) -->
+            <div class="rounded-xl bg-white border border-[#F2DCE6] p-2.5 space-y-1.5" data-live-timer-box="${order.id}" data-exp-ms="${expMs}" data-start-ms="${createdMs}">
+              <div class="flex flex-wrap items-center justify-between gap-1.5">
+                <span class="text-[10.5px] font-black text-[#4A2036] tabular-nums" data-live-timer-text="${order.id}">⏱️ Memuat timer...</span>
+                <span class="px-2 py-0.5 rounded-full bg-[#FFF0F6] text-[9.5px] font-black text-[#D83162] tabular-nums" data-live-timer-pct="${order.id}">${pctInit}%</span>
+              </div>
+              <div class="w-full h-2.5 rounded-full bg-[#FFF0F6] overflow-hidden border border-[#F5C6D8]">
+                <div data-live-timer-bar="${order.id}" style="width:${pctInit}%" class="h-full ${barClrInit} rounded-full transition-all duration-500"></div>
+              </div>
+            </div>
+
+            <!-- ROW A: Segmented Garansi Switch + Official Delivery Stamp + WA Actions -->
             <div class="flex flex-wrap items-center justify-between gap-2">
               <div class="inline-flex items-center p-1 rounded-2xl bg-[#F6E8EF] border border-[#ECC8D8] gap-0.5">
                 <button type="button" data-action="set-warranty-stamp" data-id="${order.id}" data-stamp="UNCLAIMED"
@@ -2107,47 +2136,46 @@ create policy "Allow public read/write orders" on public.orders
               </div>
 
               <div class="flex flex-wrap items-center gap-1.5">
-                <span class="px-2.5 py-1 rounded-xl border text-[10px] font-black ${durPreview.badgeClass}">
-                  ⏳ ${durPreview.label}
-                </span>
+                <button type="button" data-action="mark-archie-delivered" data-id="${order.id}"
+                        class="px-2.5 py-1 rounded-xl text-[10.5px] font-black transition cursor-pointer shadow-xs ${delivIso ? 'bg-teal-50 text-teal-800 border border-teal-300' : 'bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066]'}"
+                        title="Catat Waktu Resmi Pengiriman Archie ke Web Garansi">
+                  ${delivIso ? ('📦 Terkirim • ' + delivFmt) : '📦 Kirim Akun (Catat Waktu)'}
+                </button>
                 <button type="button" data-action="copy-wa-full-template" data-id="${order.id}"
                         class="px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black transition cursor-pointer shadow-xs">
                   💬 Copy WA
                 </button>
                 <button type="button" data-action="preview-wa-template" data-id="${order.id}"
                         class="px-2.5 py-1 rounded-xl bg-white hover:bg-[#FFF0F6] text-[#4A2036] border border-[#E6CBD7] text-[10.5px] font-extrabold transition cursor-pointer">
-                  👁️ Preview
-                </button>
-                <button type="button" data-action="download-customer-ticket" data-id="${order.id}" title="Unduh Tiket HTML"
-                        class="px-2 py-1 rounded-xl bg-white hover:bg-[#FFF0F6] text-[#9B2358] border border-[#E6CBD7] text-[10.5px] font-extrabold transition cursor-pointer">
-                  🎟️
+                  👁️
                 </button>
               </div>
             </div>
 
-            <!-- Row B: 1-Tap Quick Duration Chips + Compact Custom Stepper -->
+            <!-- ROW B: ADDITIVE-ONLY TIME EXTENSION (+Tambah Waktu) + Habiskan Button -->
             <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-dashed border-[#EBD4DF]">
               <div class="flex flex-wrap items-center gap-1">
-                <span class="text-[10px] font-black text-[#8E5670] mr-1">⏱️ Cepat:</span>
+                <span class="text-[10px] font-black text-[#8E5670] mr-0.5">➕ Tambah:</span>
                 ${[
-                  {d: 7, lbl: '7H'}, {d: 14, lbl: '14H'}, {d: 30, lbl: '30H'},
-                  {d: 60, lbl: '60H'}, {d: 90, lbl: '90H'}, {d: 365, lbl: '1Thn'}
-                ].map(p => `<button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="${p.d}" class="px-2 py-1 rounded-lg bg-white hover:bg-[#D83162] hover:text-white border border-[#E8CED9] text-[#4A2036] text-[10px] font-black transition cursor-pointer">${p.lbl}</button>`).join('')}
+                  {d: 1, lbl: '+1H'}, {d: 3, lbl: '+3H'}, {d: 7, lbl: '+7H'}, {d: 30, lbl: '+30H'}
+                ].map(p => `<button type="button" data-action="add-duration-days" data-id="${order.id}" data-days="${p.d}" class="px-2 py-1 rounded-lg bg-white hover:bg-emerald-600 hover:text-white border border-emerald-200 text-emerald-800 text-[10px] font-black transition cursor-pointer">${p.lbl}</button>`).join('')}
                 <button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="0"
-                        class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-200 text-rose-700 text-[10px] font-black transition cursor-pointer">
-                  Habis
+                        class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-300 text-rose-700 text-[10px] font-black transition cursor-pointer">
+                  ⏹️ Habis
                 </button>
               </div>
 
-              <div class="flex items-center gap-1 bg-white px-2 py-1 rounded-xl border border-[#E8CED9]">
-                <input type="number" min="0" max="999" value="30" data-custom-dur-d="${order.id}" title="Hari" class="w-11 text-center text-[10.5px] font-black text-[#4A2036] focus:outline-none" />
-                <span class="text-[9.5px] font-bold text-[#9A637B]">h</span>
-                <input type="number" min="0" max="23" value="0" data-custom-dur-h="${order.id}" title="Jam" class="w-9 text-center text-[10.5px] font-black text-[#4A2036] focus:outline-none border-l border-[#F2DCE6]" />
-                <span class="text-[9.5px] font-bold text-[#9A637B]">j</span>
-                <input type="hidden" value="0" data-custom-dur-m="${order.id}" />
+              <div class="flex items-center gap-1 bg-white px-2.5 py-1 rounded-xl border border-[#E8CED9] shadow-2xs">
+                <span class="text-[10px] font-black text-emerald-700">+</span>
+                <input type="number" min="0" max="999" value="0" data-custom-dur-d="${order.id}" title="Tambah Hari" class="w-10 text-center text-[10.5px] font-black text-[#4A2036] focus:outline-none" />
+                <span class="text-[9.5px] font-bold text-[#9A637B]">H</span>
+                <input type="number" min="0" max="23" value="0" data-custom-dur-h="${order.id}" title="Tambah Jam" class="w-9 text-center text-[10.5px] font-black text-[#4A2036] focus:outline-none border-l border-[#F2DCE6]" />
+                <span class="text-[9.5px] font-bold text-[#9A637B]">J</span>
+                <input type="number" min="0" max="59" value="0" data-custom-dur-m="${order.id}" title="Tambah Menit" class="w-9 text-center text-[10.5px] font-black text-[#4A2036] focus:outline-none border-l border-[#F2DCE6]" />
+                <span class="text-[9.5px] font-bold text-[#9A637B]">M</span>
                 <button type="button" data-action="apply-custom-duration" data-id="${order.id}"
-                        class="ml-1 px-2 py-0.5 rounded-lg bg-[#D83162] hover:bg-[#B8224F] text-white text-[10px] font-black cursor-pointer">
-                  Set
+                        class="ml-1 px-2.5 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black cursor-pointer">
+                  + Tambah
                 </button>
               </div>
             </div>
@@ -2267,19 +2295,62 @@ create policy "Allow public read/write orders" on public.orders
         });
       });
 
-      // Apply Custom Duration (Days / Hours / Minutes)
+      // Apply Custom Duration — STRICTLY ADDITIVE (+Tambah Waktu, bukan ganti!)
       container.querySelectorAll('button[data-action="apply-custom-duration"]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const id = btn.getAttribute('data-id');
+          const ord = allOrders.find(o => String(o.id) === String(id));
+          const curExp = ord ? (Number(parseWarrantyAndDurationFromOrder(ord).expiresAtMs) || Date.now()) : Date.now();
           const dEl = container.querySelector(`input[data-custom-dur-d="${id}"]`);
           const hEl = container.querySelector(`input[data-custom-dur-h="${id}"]`);
           const mEl = container.querySelector(`input[data-custom-dur-m="${id}"]`);
           const d = Math.max(0, parseInt(dEl ? dEl.value : 0, 10) || 0);
           const h = Math.max(0, parseInt(hEl ? hEl.value : 0, 10) || 0);
           const m = Math.max(0, parseInt(mEl ? mEl.value : 0, 10) || 0);
-          const totalMs = ((d * 86400) + (h * 3600) + (m * 60)) * 1000;
-          const newExp = totalMs <= 0 ? (Date.now() - 2000) : (Date.now() + totalMs);
-          await adminActionUpdateWarrantyOrDuration(id, null, newExp);
+          const addMs = ((d * 86400) + (h * 3600) + (m * 60)) * 1000;
+          if (addMs <= 0) { showAdminToast('Isi jumlah Hari / Jam / Menit yang ingin ditambahkan dulu ya!'); return; }
+          const baseExp = Math.max(Date.now(), curExp);
+          await adminActionUpdateWarrantyOrDuration(id, null, baseExp + addMs);
+          showAdminToast(`➕ Berhasil menambah +${d}H ${h}J ${m}M!`);
+        });
+      });
+
+      // Quick +Tambah Chips — STRICTLY ADDITIVE
+      container.querySelectorAll('button[data-action="add-duration-days"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const days = Math.max(0, parseFloat(btn.getAttribute('data-days')) || 0);
+          const ord = allOrders.find(o => String(o.id) === String(id));
+          const curExp = ord ? (Number(parseWarrantyAndDurationFromOrder(ord).expiresAtMs) || Date.now()) : Date.now();
+          const baseExp = Math.max(Date.now(), curExp);
+          await adminActionUpdateWarrantyOrDuration(id, null, baseExp + days * 86400000);
+          showAdminToast(`➕ Berhasil menambah +${days} Hari!`);
+        });
+      });
+
+      // Official Archie Delivery Timestamp Button (DELIV_AT:<ISO> -> shown on Web Garansi!)
+      container.querySelectorAll('button[data-action="mark-archie-delivered"]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = btn.getAttribute('data-id');
+          const ord = allOrders.find(o => String(o.id) === String(id));
+          if (!ord) return;
+          const nowIso = new Date().toISOString();
+          let plan = String(ord.plan_label || '1 Bulan');
+          if (/DELIV_AT:[^|\]]+/i.test(plan)) {
+            plan = plan.replace(/DELIV_AT:[^|\]]+/i, 'DELIV_AT:' + nowIso);
+          } else if (plan.includes(']')) {
+            plan = plan.replace(']', '|DELIV_AT:' + nowIso + ']');
+          } else {
+            plan = plan + ' [GARANSI:UNCLAIMED|DELIV_AT:' + nowIso + ']';
+          }
+          try {
+            const client = getSupabaseClient();
+            if (client) await client.from('orders').update({ plan_label: plan }).eq('id', ord.id);
+            else await supabaseRestRequest(`orders?id=eq.${encodeURIComponent(ord.id)}`, { method: 'PATCH', body: JSON.stringify({ plan_label: plan }) });
+            ord.plan_label = plan;
+            renderOrdersList(true);
+            showAdminToast('📦 Waktu Resmi Pengiriman Archie tercatat & langsung tampil di Web Garansi!');
+          } catch (e) { showAdminToast('⚠️ Gagal mencatat waktu pengiriman.'); }
         });
       });
 
@@ -4163,10 +4234,10 @@ create policy "Allow public read/write orders" on public.orders
       : autoNeeds;
 
     const catRows = [
-      { key: 'modalFh', icon: '📦', title: 'Modal Putar FH', desc: 'Dihitung otomatis dari modal katalog FH tiap order.', collected: modalFh, target: activeNeeds.modalFh, bar: 'bg-[#4A2036]', border: 'border-[#F5B8CE]', text: 'text-[#4A2036]' },
-      { key: 'garansi', icon: '🛡️', title: 'Cadangan Garansi (15%)', desc: 'Otomatis disisihkan 15% profit untuk dana ganti akun.', collected: cadanganGaransi, target: activeNeeds.garansi, bar: 'bg-amber-400', border: 'border-amber-200', text: 'text-amber-800' },
-      { key: 'operasional', icon: '⚡', title: 'Operasional Toko (10%)', desc: 'Otomatis disisihkan 10% profit untuk kuota & kebutuhan toko.', collected: operasional, target: activeNeeds.operasional, bar: 'bg-sky-400', border: 'border-sky-200', text: 'text-sky-800' },
-      { key: 'profit', icon: '💖', title: 'Profit Bersih Mimin (75%)', desc: '100% bersih milik Mimin (ShopeePay 0% MDR!).', collected: profitMimin, target: activeNeeds.profit, bar: 'bg-gradient-to-r from-[#D83162] to-[#FF5C8A]', border: 'border-[#D83162]', text: 'text-[#D83162]' }
+      { key: 'modalFh', icon: '📦', title: 'Modal Putar FH', desc: '👉 Sisihkan uang ini untuk beli stok lagi ke supplier FH.', collected: modalFh, target: activeNeeds.modalFh, bar: 'bg-[#4A2036]', border: 'border-[#F5B8CE]', text: 'text-[#4A2036]' },
+      { key: 'garansi', icon: '🛡️', title: 'Cadangan Garansi (15%)', desc: '👉 Simpan di rekening terpisah buat dana darurat garansi.', collected: cadanganGaransi, target: activeNeeds.garansi, bar: 'bg-amber-400', border: 'border-amber-200', text: 'text-amber-800' },
+      { key: 'operasional', icon: '⚡', title: 'Operasional Toko (10%)', desc: '👉 Buat biaya kuota, listrik, & operasional toko.', collected: operasional, target: activeNeeds.operasional, bar: 'bg-sky-400', border: 'border-sky-200', text: 'text-sky-800' },
+      { key: 'profit', icon: '💖', title: 'Profit Bersih Mimin (75%)', desc: '👉 100% gaji bersih Mimin — aman banget dipakai jajan! 🐰💖', collected: profitMimin, target: activeNeeds.profit, bar: 'bg-gradient-to-r from-[#D83162] to-[#FF5C8A]', border: 'border-[#D83162]', text: 'text-[#D83162]' }
     ];
 
     const totalNeedAll = catRows.reduce((s, c) => s + c.target, 0);
@@ -4180,10 +4251,11 @@ create policy "Allow public read/write orders" on public.orders
         <div class="rounded-[24px] bg-gradient-to-br from-[#FFF0F6] via-white to-[#FFE4F0] border-2 border-[#FF85A9] p-4 sm:p-5 space-y-3.5 shadow-sm">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <span class="px-2.5 py-0.5 rounded-full bg-[#D83162] text-white text-[10px] font-black uppercase tracking-wider">🛍️ SHOPEEPAY QRIS • 0% MDR</span>
+              <span class="px-2.5 py-0.5 rounded-full bg-[#D83162] text-white text-[10px] font-black uppercase tracking-wider">🛍️ DOMPET SHOPEEPAY • 0% POTONGAN ADMIN</span>
               <h2 class="text-base sm:text-lg font-black text-[#4A2036] mt-1">${ekonomiHeading}</h2>
             </div>
             <div class="flex items-center gap-1.5">
+              <button id="openFinanceGuidebookBtn" type="button" class="px-3 py-1.5 rounded-full bg-[#4A2036] hover:bg-[#6A2C4D] text-[#FFE066] text-[11px] font-black transition cursor-pointer shadow-sm">📘 Guidebook Keuangan</button>
               <button id="toggleEkonomiAutoManualBtn" type="button" class="px-3 py-1.5 rounded-full text-[11px] font-black transition cursor-pointer ${manualMode ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'}">
                 ${manualMode ? '✏️ Mode Manual (Klik untuk Otomatis)' : '🤖 Mode Otomatis Aktif (Ubah Manual?)'}
               </button>
@@ -4228,7 +4300,7 @@ create policy "Allow public read/write orders" on public.orders
 
         <div class="space-y-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="text-sm font-black text-[#4A2036]">📈 Line Progress Kebutuhan Tiap Kategori</h3>
+            <h3 class="text-sm font-black text-[#4A2036]">🪣 Panduan Bagi Uang Cair ke 4 Pos (Otomatis — Tinggal Ikutin Angkanya!)</h3>
             <span class="text-[11px] font-bold text-[#7A4961]">${manualMode ? 'Ketik target manual di kotak Rp di tiap kartu.' : 'Semua angka &amp; target dihitung otomatis — tinggal pantau saja!'}</span>
           </div>
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
@@ -4512,5 +4584,108 @@ create policy "Allow public read/write orders" on public.orders
   }
 })();
 </script>
+<script>
+    (function startAdminCardLiveTimers() {
+      if (window.__ADMIN_LIVE_CARD_TICKER__) return;
+      window.__ADMIN_LIVE_CARD_TICKER__ = true;
+      function tick() {
+        document.querySelectorAll('[data-live-timer-box]').forEach(function(box) {
+          var id = box.getAttribute('data-live-timer-box');
+          var expMs = Number(box.getAttribute('data-exp-ms')) || 0;
+          var startMs = Number(box.getAttribute('data-start-ms')) || (Date.now() - 86400000);
+          var txtEl = box.querySelector('[data-live-timer-text]');
+          var pctEl = box.querySelector('[data-live-timer-pct]');
+          var barEl = box.querySelector('[data-live-timer-bar]');
+          if (!expMs) {
+            if (txtEl) txtEl.textContent = '⏱️ Durasi belum diset';
+            return;
+          }
+          var rem = expMs - Date.now();
+          if (rem <= 0) {
+            if (txtEl) { txtEl.textContent = '😿 Durasi Sudah Habis (Expired)'; txtEl.className = 'text-[10.5px] font-black text-rose-600 tabular-nums'; }
+            if (pctEl) pctEl.textContent = '0%';
+            if (barEl) { barEl.style.width = '0%'; barEl.className = 'h-full bg-rose-500 rounded-full transition-all duration-500'; }
+            return;
+          }
+          var d = Math.floor(rem / 86400000);
+          var h = Math.floor((rem % 86400000) / 3600000);
+          var m = Math.floor((rem % 3600000) / 60000);
+          var s = Math.floor((rem % 60000) / 1000);
+          var pad = function(n) { return String(n).padStart(2, '0'); };
+          var span = Math.max(86400000, expMs - startMs);
+          var pct = Math.min(100, Math.max(1, Math.round((rem / span) * 100)));
+          if (txtEl) {
+            txtEl.textContent = '⏱️ Sisa Aktif: ' + d + ' Hari ' + pad(h) + ':' + pad(m) + ':' + pad(s);
+            txtEl.className = rem <= 86400000 ? 'text-[10.5px] font-black text-amber-700 tabular-nums' : 'text-[10.5px] font-black text-emerald-700 tabular-nums';
+          }
+          if (pctEl) pctEl.textContent = pct + '%';
+          if (barEl) {
+            barEl.style.width = pct + '%';
+            barEl.className = rem <= 86400000 ? 'h-full bg-amber-400 rounded-full transition-all duration-500' : 'h-full bg-gradient-to-r from-emerald-400 to-teal-500 rounded-full transition-all duration-500';
+          }
+        });
+      }
+      tick();
+      setInterval(tick, 1000);
+    })();
+</script>
+
+  <div id="financeGuidebookModal" class="fixed inset-0 z-[9999] hidden items-center justify-center p-4 bg-[#3A1228]/65 backdrop-blur-sm">
+    <div class="w-full max-w-2xl max-h-[88vh] overflow-y-auto bg-white border-2 border-[#F5B8CE] rounded-[28px] p-5 sm:p-6 shadow-2xl space-y-4">
+      <div class="flex items-start justify-between gap-2 border-b border-dashed border-[#F5B8CE] pb-3">
+        <div>
+          <span class="px-2.5 py-0.5 rounded-full bg-[#FFE0EC] text-[#D83162] text-[10px] font-black uppercase tracking-wider">📘 GUIDEBOOK KEUANGAN ARCHIE'PELAGO</span>
+          <h3 class="text-base sm:text-lg font-black text-[#4A2036] mt-1">Panduan Lengkap: Kenapa, Apa, &amp; Bagaimana Sistem Keuangan Bekerja</h3>
+        </div>
+        <button id="closeFinanceGuidebookBtn" type="button" class="w-8 h-8 rounded-full bg-[#FFE4EE] hover:bg-[#FFD0E2] text-[#4A2036] font-black text-xs cursor-pointer shrink-0">✕</button>
+      </div>
+
+      <div class="space-y-3 text-left text-xs text-[#4A2036] leading-relaxed">
+        <div class="p-3.5 rounded-2xl bg-[#FFF6FA] border border-[#F5C6D8] space-y-1">
+          <div class="font-black text-[#D83162]">1. KENAPA uang penjualan tidak boleh langsung dipakai semua?</div>
+          <p class="font-semibold text-[#5E2A44]">Total uang masuk (<strong>Omzet</strong>) <strong>BUKAN</strong> gaji bersih kamu. Di dalamnya masih ada uang milik supplier (Modal FH) dan cadangan kalau sewaktu-waktu ada akun customer bermasalah. Kalau semua langsung dipakai jajan, nanti pas harus beli stok atau ganti garansi kamu malah harus nombok dari uang pribadi.</p>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-[#FFF6FA] border border-[#F5C6D8] space-y-1.5">
+          <div class="font-black text-[#D83162]">2. APA arti 4 Pos Pembagian Uang &amp; KENAPA persentasenya begitu?</div>
+          <ul class="list-disc pl-4 space-y-1 font-semibold text-[#5E2A44]">
+            <li><strong>📦 Pos 1 — Modal Putar FH:</strong> Dihitung otomatis dari modal beli akun ke First Hand. Uang ini <em>wajib diputar lagi</em> untuk beli stok berikutnya.</li>
+            <li><strong>🛡️ Pos 2 — Cadangan Garansi (15% dari Laba):</strong> Di bisnis app premium selalu ada risiko akun ke-hold/tumbang. Menyisihkan 15% laba bikin kamu punya dana darurat khusus refill garansi tanpa panik.</li>
+            <li><strong>⚡ Pos 3 — Operasional Toko (10% dari Laba):</strong> Untuk nutup kuota, listrik, atau kebutuhan operasional jualan supaya tidak memotong gaji pribadi kamu.</li>
+            <li><strong>💖 Pos 4 — Gaji / Profit Bersih Mimin (75% dari Laba):</strong> Nah, angka di pos inilah <strong>uang 100% milik kamu</strong> yang aman banget dipakai jajan, nabung, atau belanja!</li>
+          </ul>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-1">
+          <div class="font-black text-amber-900">3. BAGAIMANA cara kerja ShopeePay QRIS 0% MDR &amp; Cair Besok (H+1)?</div>
+          <p class="font-semibold text-amber-950/85">Karena kamu pakai <strong>ShopeePay QRIS (0% MDR)</strong>, tidak ada potongan biaya admin sama sekali — 100% nominal yang dibayar customer masuk utuh. Uang yang masuk <strong>Hari Ini</strong> dipisah dulu ke kotak kuning (<em>Cair Besok</em>) supaya kamu tidak salah menghitung uang yang belum benar-benar cair di rekening. Besok otomatis dianggap cair, atau kamu bisa klik <strong>💸 Cairkan &amp; Gabung</strong> kapan saja kalau sudah masuk rekening.</p>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+          <div class="font-black text-emerald-900">4. APA bedanya Mode Otomatis vs Mode Manual &amp; Simulasi Mass Wipe?</div>
+          <p class="font-semibold text-emerald-950/85">Di <strong>🤖 Mode Otomatis</strong> (default), kamu tidak perlu mikir rumus apa pun — sistem otomatis membuatkan target progress bar yang naik bertahap setiap kali penjualanmu bertambah. Kalau suatu saat kamu punya target pribadi (misal mau nabung Rp 2.000.000), tinggal klik <strong>Ubah Manual</strong>. Sedangkan <strong>🧪 Simulasi Mass Wipe</strong> dipakai untuk mengecek: kalau misal 20% akun tumbang barengan, apakah Tabungan Garansi (15%) kamu masih kuat nutup biaya refill-nya.</p>
+        </div>
+
+        <div class="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-200 space-y-1">
+          <div class="font-black text-sky-900">5. BAGAIMANA cara pakai Kalkulator Harga Anti-Siram 2026 di Web Editor?</div>
+          <p class="font-semibold text-sky-950/85">Di <strong>Web Editor → Tab 6 (Kalkulator Harga)</strong>, pilih aplikasi dari dropdown (atau ketik Modal FH &amp; target untung yang kamu mau). Kalkulator otomatis menghitung harga jual yang <strong>tetap untung &amp; tidak melanggar batas bawah (Floor 2026)</strong> meskipun customer dapat diskon Gacha maksimal 5% — lalu klik <strong>Terapkan ke Draft</strong> supaya harga di katalog langsung ter-update!</p>
+        </div>
+      </div>
+
+      <button id="okFinanceGuidebookBtn" type="button" class="w-full py-2.5 rounded-full sweet-btn text-xs font-black cursor-pointer">✅ Paham Banget, Tutup Guidebook 🌸</button>
+    </div>
+  </div>
+  <script>
+    document.addEventListener('click', function(e) {
+      var m = document.getElementById('financeGuidebookModal');
+      if (!m || !e.target) return;
+      if (e.target.closest && e.target.closest('#openFinanceGuidebookBtn')) {
+        m.classList.remove('hidden'); m.classList.add('flex');
+      } else if (e.target === m || (e.target.closest && (e.target.closest('#closeFinanceGuidebookBtn') || e.target.closest('#okFinanceGuidebookBtn')))) {
+        m.classList.add('hidden'); m.classList.remove('flex');
+      }
+    });
+  </script>
+
 </body>
 </html>
