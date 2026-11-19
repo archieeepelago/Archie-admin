@@ -194,7 +194,10 @@
       <p class="text-xs font-bold text-[#8C4A67]">Masuk menggunakan akun Supabase Auth Admin untuk mengelola pesanan &amp; QRIS.</p>
       <div class="space-y-2.5 text-left">
         <input id="adminLoginEmail" type="email" placeholder="Email Admin" class="w-full px-3.5 py-2.5 rounded-xl border-2 border-[#F4A9C7] text-xs font-bold text-[#4A2036] focus:outline-none" />
-        <input id="adminLoginPassword" type="password" placeholder="Password Admin" class="w-full px-3.5 py-2.5 rounded-xl border-2 border-[#F4A9C7] text-xs font-bold text-[#4A2036] focus:outline-none" />
+        <div class="relative">
+          <input id="adminLoginPassword" type="password" placeholder="Password Admin" class="w-full px-3.5 py-2.5 pr-10 rounded-xl border-2 border-[#F4A9C7] text-xs font-bold text-[#4A2036] focus:outline-none" />
+          <button id="toggleAdminPwdBtn" type="button" title="Lihat/Sembunyikan Password" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-[#9B2358] font-bold cursor-pointer">👁️</button>
+        </div>
       </div>
       <button id="adminLoginSubmitBtn" type="button" class="w-full py-2.5 rounded-full bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white font-black text-xs shadow-md cursor-pointer">
         🔐 MASUK DASHBOARD ADMIN
@@ -261,9 +264,7 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-1.5">
-        <button id="toggleSurpriseDrawerBtn" type="button" class="px-3 py-1.5 rounded-full bg-[#FFF0F6] hover:bg-[#FFE0EC] border border-[#F5B8CE] text-[#9B2358] text-[11px] font-black flex items-center gap-1 transition cursor-pointer">
-          <span>💌 Surprise Msg</span>
-        </button>
+        
         <button id="openRedirectGuideModalBtn" type="button" class="px-3 py-1.5 rounded-full bg-[#E8F5FE] hover:bg-[#D0ECFD] border border-[#90CDF4] text-[#1D9BF0] text-[11px] font-black transition cursor-pointer">
           🔗 Link Order
         </button>
@@ -273,6 +274,12 @@
         </button>
         <button id="openSqlModalBtn" type="button" title="Lihat Struktur SQL" class="px-2.5 py-1.5 rounded-full bg-white hover:bg-[#FFF5F9] border border-[#F5B8CE] text-[#7A4961] text-[11px] font-extrabold transition cursor-pointer">
           🛠️ SQL
+        </button>
+        <a href="/editor" class="px-3 py-1.5 rounded-full bg-gradient-to-r from-[#FFF0F6] to-[#FFE0EC] hover:from-[#FFE0EC] hover:to-[#FFD0E2] border border-[#F5B8CE] text-[#9B2358] text-[11px] font-black flex items-center gap-1 transition shadow-sm">
+          <span>✏️ Web Editor</span>
+        </a>
+        <button id="adminLogoutHeaderBtn" type="button" class="px-2.5 py-1.5 rounded-full bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 text-[11px] font-black transition cursor-pointer">
+          🚪 Keluar
         </button>
         <button id="refreshOrdersBtn" type="button" class="px-3.5 py-1.5 rounded-full sweet-btn text-[11px] font-black flex items-center gap-1">
           <span>🔄 Sync</span>
@@ -304,14 +311,16 @@
 
         <div class="flex flex-wrap items-center gap-1.5 shrink-0">
           <button id="openManualOrderModalBtn" type="button" class="px-3 py-2 rounded-xl sweet-btn text-[11px] font-black transition cursor-pointer">
-            ➕ Order Baru (Urut 0001)
+            ➕ Order Baru
           </button>
-          <button id="createSimQrisBtn" type="button" class="px-2.5 py-2 rounded-xl bg-[#FFE5EE] hover:bg-[#FFD0E0] text-[#D83162] text-[10.5px] font-extrabold transition cursor-pointer">
-            + Tes QRIS 🛒
+          <button id="syncAllOrderCodesBtn" type="button" title="Urutkan & sinkronkan ARC-0001..XXXX di Supabase agar Customer, Admin & Garansi 100% sama" class="px-3 py-2 rounded-xl bg-[#4A2036] hover:bg-[#6A2C4D] text-[#FFE066] text-[11px] font-black transition cursor-pointer shadow-sm">
+            🔄 Sync Nomor Antrean
           </button>
-          <button id="createSimSecretBtn" type="button" class="px-2.5 py-2 rounded-xl bg-[#FFE0EC] hover:bg-[#FFD0E2] text-[#8E2452] text-[10.5px] font-extrabold transition cursor-pointer">
-            + Tes Secret 👀
+          <button id="wipeResetArc0001Btn" type="button" title="Hapus semua pesanan tes & reset antrean mulai dari ARC-0001" class="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-300 text-[11px] font-black transition cursor-pointer">
+            🧹 Reset ARC-0001
           </button>
+          
+          
           <select id="globalQrisCropModeSelect" title="Mode Auto-Crop QRIS" class="px-2.5 py-2 rounded-xl bg-[#FFF0F6] border border-[#F5B8CE] text-[#9B2358] text-[10.5px] font-black focus:outline-none cursor-pointer">
             <option value="CROP_ONLY" selected>✂️ Fokus Kotak QR Saja</option>
             <option value="CUTE_FRAME">✨ Crop + Bingkai</option>
@@ -791,90 +800,267 @@ create policy "Allow public read/write orders" on public.orders
 
     function extractSeqNumFromOrder(order) {
       if (!order) return 0;
-      const rawPlan = String(order.plan_label || '');
-      const m = rawPlan.match(/CODE:ARC-0*(\d+)/i);
-      if (m && m[1]) {
-        const n = parseInt(m[1], 10);
-        // Strictly ignore legacy random 4/5-digit codes (like 81780); only accept true sequential numbers 1..999
-        if (n > 0 && n < 1000) return n;
+      if (order.order_code && /^ARC-0*(\d+)$/i.test(String(order.order_code).trim())) {
+        return parseInt(String(order.order_code).trim().match(/^ARC-0*(\d+)$/i)[1], 10) || 0;
       }
       const rawId = parseInt(String(order.id || '').replace(/[^0-9]/g, ''), 10);
-      if (rawId > 0 && rawId < 1000) return rawId;
-      return 0;
+      return rawId > 0 ? rawId : 0;
     }
 
     function getNextSequentialOrderDigits() {
-      if (!Array.isArray(allOrders) || allOrders.length === 0) {
-        try { localStorage.setItem('archie_seq_order_counter', '0'); } catch (e) {}
-        return '0001';
-      }
-      let maxSeq = 0;
+      if (!Array.isArray(allOrders) || allOrders.length === 0) return '0001';
+      let maxId = 0;
       allOrders.forEach(o => {
         const s = extractSeqNumFromOrder(o);
-        if (s > maxSeq) maxSeq = s;
+        if (s > maxId) maxId = s;
       });
-      if (maxSeq === 0) maxSeq = allOrders.length;
-      const nextNum = maxSeq + 1;
-      try { localStorage.setItem('archie_seq_order_counter', String(maxSeq)); } catch (e) {}
-      return String(nextNum).padStart(4, '0');
-    }
-
-    function formatOrderDigitsOnly(id, orderObj = null) {
-      const ord = orderObj || (Array.isArray(allOrders) ? allOrders.find(o => String(o.id) === String(id)) : null);
-      if (ord) {
-        const seq = extractSeqNumFromOrder(ord);
-        if (seq > 0 && seq < 1000) {
-          return String(seq).padStart(4, '0');
-        }
-        if (Array.isArray(allOrders) && allOrders.length > 0) {
-          const chronological = [...allOrders].sort((a, b) => (new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()) || ((Number(a.id) || 0) - (Number(b.id) || 0)));
-          const idx = chronological.findIndex(o => String(o.id) === String(ord.id));
-          if (idx >= 0) return String(idx + 1).padStart(4, '0');
-        }
-      }
-      const digits = String(id || '').replace(/[^0-9]/g, '');
-      const num = parseInt(digits, 10) || 1;
-      if (num > 0 && num < 1000) {
-        return String(num).padStart(4, '0');
-      }
-      return '0001';
-    }
-
-    async function autoMigrateLegacyOrderCodesInSupabase() {
-      if (!Array.isArray(allOrders) || allOrders.length === 0) return;
-      const chronological = [...allOrders].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
-      let anyChanged = false;
-      for (let i = 0; i < chronological.length; i++) {
-        const ord = chronological[i];
-        const existingSeq = extractSeqNumFromOrder(ord);
-        if (existingSeq <= 0 || existingSeq >= 1000) {
-          const newSeqCode = `ARC-${String(i + 1).padStart(4, '0')}`;
-          const wInfo = parseWarrantyAndDurationFromOrder(ord);
-          const updatedPlan = encodePlanLabelWithWarranty(wInfo.cleanPlan, wInfo.warrantyStatus, wInfo.expiresAtMs, newSeqCode);
-          ord.plan_label = updatedPlan;
-          anyChanged = true;
-          try {
-            const client = getSupabaseClient();
-            if (client) {
-              await client.from('orders').update({ plan_label: updatedPlan }).eq('id', ord.id);
-            } else {
-              await supabaseRestRequest(`orders?id=eq.${encodeURIComponent(ord.id)}`, {
-                method: 'PATCH',
-                body: JSON.stringify({ plan_label: updatedPlan })
-              });
-            }
-          } catch (e) {}
-        }
-      }
-      if (anyChanged) {
-        renderQuickOrderChips();
-        renderOrdersList(true);
-      }
+      return String(maxId + 1).padStart(4, '0');
     }
 
     function formatOrderCode(id, orderObj = null) {
-      return `ARC-${formatOrderDigitsOnly(id, orderObj)}`;
+      const ord = orderObj || (Array.isArray(allOrders) ? allOrders.find(o => String(o.id) === String(id)) : null);
+      if (ord && ord.order_code) {
+        const m = String(ord.order_code).trim().match(/^ARC-0*(\d{1,6})$/i);
+        if (m && m[1]) return `ARC-${String(parseInt(m[1], 10)).padStart(4, '0')}`;
+      }
+      if (ord && ord.plan_label) {
+        const m2 = String(ord.plan_label).match(/CODE:ARC-0*(\d{1,6})/i);
+        if (m2 && m2[1]) return `ARC-${String(parseInt(m2[1], 10)).padStart(4, '0')}`;
+      }
+      const realId = (ord && ord.id !== undefined && ord.id !== null) ? ord.id : id;
+      const rawIdStr = String(realId || '').trim();
+      // Only use numeric id if it is a clean small integer (1..999999); NEVER dump UUID digits!
+      if (/^\d{1,6}$/.test(rawIdStr)) {
+        return `ARC-${String(parseInt(rawIdStr, 10)).padStart(4, '0')}`;
+      }
+      if (ord && Array.isArray(allOrders) && allOrders.length > 0) {
+        const sorted = [...allOrders].sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+        const idx = sorted.findIndex(o => String(o.id) === String(ord.id));
+        if (idx >= 0) return `ARC-${String(idx + 1).padStart(4, '0')}`;
+      }
+      return 'ARC-0001';
     }
+
+    function formatOrderDigitsOnly(id, orderObj = null) {
+      return formatOrderCode(id, orderObj).replace(/^ARC-/i, '');
+    }
+
+    async function autoMigrateLegacyOrderCodesInSupabase() {
+      return;
+    }
+
+    document.addEventListener('click', function(e) {
+      if (e.target && e.target.closest && e.target.closest('#syncAllOrderCodesBtn')) {
+        syncAllOrderCodesAcrossWebs();
+      }
+    });
+    async function syncAllOrderCodesAcrossWebs() {
+      if (!confirm('Sinkronkan ulang semua nomor antrean aktif (ARC-0001, ARC-0002, dst.) di Supabase agar Web Customer, Web Admin, dan Web Garansi 100% sama?')) return;
+      const btn = document.getElementById('syncAllOrderCodesBtn');
+      const origTxt = btn ? btn.textContent : '🔄 Sync Nomor Antrean';
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Menyinkronkan...'; }
+      try {
+        const client = getSupabaseClient();
+        // Priority 1: Server RPC that also resets archie_order_seq so next Customer order continues cleanly!
+        if (client && typeof client.rpc === 'function') {
+          const { data: rpcData, error: rpcErr } = await client.rpc('admin_reset_order_sequence');
+          if (!rpcErr && rpcData && rpcData.ok) {
+            await fetchAllOrders();
+            showAdminToast(`✅ ${rpcData.total_synced} antrean sinkron di semua web! Order Customer berikutnya: ${rpcData.next_code}`);
+            return;
+          }
+        }
+        // Fallback: client-side 2-pass sync on active (non-deleted) rows
+        let rows = [];
+        if (client) {
+          const { data, error } = await client.from('orders').select('*').is('deleted_at', null).order('created_at', { ascending: true }).order('id', { ascending: true });
+          if (error) throw error;
+          rows = data || [];
+        } else {
+          const res = await supabaseRestRequest('orders?select=*&deleted_at=is.null&order=created_at.asc,id.asc');
+          if (Array.isArray(res)) rows = res;
+        }
+        if (!rows.length) {
+          await fetchAllOrders();
+          showAdminToast('Tidak ada pesanan aktif. Jalankan SQL RPC sekali di Supabase agar sequence kembali ke ARC-0001.');
+          return;
+        }
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          const targetCode = 'ARC-' + String(i + 1).padStart(4, '0');
+          if (String(r.order_code || '').trim().toUpperCase() === targetCode) continue;
+          const tmpCode = 'TMP-' + String(r.id) + '-' + Date.now();
+          if (client) await client.from('orders').update({ order_code: tmpCode }).eq('id', r.id);
+        }
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          const targetCode = 'ARC-' + String(i + 1).padStart(4, '0');
+          const wInfo = parseWarrantyAndDurationFromOrder(r);
+          const updatedPlan = encodePlanLabelWithWarranty(wInfo.cleanPlan, wInfo.warrantyStatus, wInfo.expiresAtMs, targetCode);
+          if (client) await client.from('orders').update({ order_code: targetCode, plan_label: updatedPlan }).eq('id', r.id);
+        }
+        await fetchAllOrders();
+        showAdminToast(`✅ ${rows.length} antrean disinkronkan ke ARC-0001..ARC-${String(rows.length).padStart(4, '0')}!`);
+      } catch (err) {
+        console.error('Sync antrean error:', err);
+        showAdminToast('⚠️ Gagal sinkronisasi: ' + (err && err.message ? err.message : 'coba lagi'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origTxt; }
+      }
+    }
+
+    async function wipeAndResetToArc0001() {
+      if (!confirm('HAPUS PERMANEN semua pesanan tes di database & reset nomor antrean mulai dari ARC-0001? (Gunakan sebelum launch ke customer!)')) return;
+      if (!confirm('Yakin 100%? Semua data pesanan saat ini akan dibersihkan dan pesanan pertama nanti jadi ARC-0001.')) return;
+      const btn = document.getElementById('wipeResetArc0001Btn');
+      const origTxt = btn ? btn.textContent : '🧹 Reset ARC-0001';
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Mereset...'; }
+      try {
+        const client = getSupabaseClient();
+        if (client && typeof client.rpc === 'function') {
+          const { data: rpcData, error: rpcErr } = await client.rpc('admin_wipe_test_orders');
+          if (!rpcErr && rpcData && rpcData.ok) {
+            allOrders = [];
+            await fetchAllOrders();
+            renderQuickOrderChips();
+            renderOrdersList(true);
+            updateDashboardStatsAndBadges();
+            showAdminToast('🧹 Bersih total! Semua pesanan tes dihapus & antrean berikutnya mulai dari ARC-0001!');
+            return;
+          }
+        }
+        // Fallback if SQL RPC not installed yet: hard delete rows and notify user to run 1-line sequence reset
+        if (client) {
+          await client.from('orders').delete().not('id', 'is', null);
+        }
+        allOrders = [];
+        await fetchAllOrders();
+        renderQuickOrderChips();
+        renderOrdersList(true);
+        updateDashboardStatsAndBadges();
+        showAdminToast('🧹 Pesanan dibersihkan! Jalankan SQL RPC admin_wipe_test_orders di Supabase agar counter langsung reset ke ARC-0001.');
+      } catch (err) {
+        console.error('Wipe reset error:', err);
+        showAdminToast('⚠️ Gagal reset: ' + (err && err.message ? err.message : 'coba lagi'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = origTxt; }
+      }
+    }
+
+    function openAdminEditOrderModal(orderId) {
+      const ord = allOrders.find(o => String(o.id) === String(orderId));
+      if (!ord) return;
+      const wInfo = parseWarrantyAndDurationFromOrder(ord);
+      const curCode = formatOrderCode(ord.id, ord);
+      let ov = document.getElementById('adminEditOrderModal');
+      if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'adminEditOrderModal';
+        ov.className = 'fixed inset-0 z-[9999] hidden items-center justify-center p-4 bg-[#3A1228]/60 backdrop-blur-sm';
+        ov.innerHTML = `
+          <div class="w-full max-w-md bg-white border-2 border-[#F5B8CE] rounded-[28px] p-5 shadow-2xl space-y-3.5">
+            <div class="flex items-center justify-between border-b border-dashed border-[#F5B8CE] pb-2.5">
+              <h3 class="text-sm font-black text-[#4A2036]">✏️ Edit Pesanan Customer</h3>
+              <button id="closeAdminEditOrderBtn" type="button" class="w-8 h-8 rounded-full bg-[#FFE4EE] text-[#4A2036] font-black text-xs cursor-pointer">✕</button>
+            </div>
+            <input type="hidden" id="editOrdIdInp" />
+            <div class="grid grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[10.5px] font-black text-[#7A4961] mb-1">Kode Antrean (ARC-XXXX)</label>
+                <input id="editOrdCodeInp" type="text" class="w-full px-3 py-2 rounded-xl border border-[#F5B8CE] bg-[#FFF8FA] text-xs font-black text-[#4A2036]" />
+              </div>
+              <div>
+                <label class="block text-[10.5px] font-black text-[#7A4961] mb-1">Status Pesanan</label>
+                <select id="editOrdStatusInp" class="w-full px-3 py-2 rounded-xl border border-[#F5B8CE] bg-[#FFF8FA] text-xs font-black text-[#4A2036]">
+                  <option value="WAITING_QRIS">⏳ WAITING_QRIS</option>
+                  <option value="QRIS_SENT">⏱️ QRIS_SENT</option>
+                  <option value="PAID">✅ PAID (Lunas)</option>
+                  <option value="WAITING_SECRET_PRICE">👀 WAITING_SECRET_PRICE</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-[10.5px] font-black text-[#7A4961] mb-1">Nama / Inisial Customer</label>
+              <input id="editOrdInitialsInp" type="text" class="w-full px-3 py-2 rounded-xl border border-[#F5B8CE] bg-[#FFF8FA] text-xs font-bold text-[#4A2036]" />
+            </div>
+            <div>
+              <label class="block text-[10.5px] font-black text-[#7A4961] mb-1">Nama Aplikasi / Produk</label>
+              <input id="editOrdProductInp" type="text" class="w-full px-3 py-2 rounded-xl border border-[#F5B8CE] bg-[#FFF8FA] text-xs font-bold text-[#4A2036]" />
+            </div>
+            <div class="grid grid-cols-2 gap-2.5">
+              <div>
+                <label class="block text-[10.5px] font-black text-[#7A4961] mb-1">Paket &amp; Durasi</label>
+                <input id="editOrdPlanInp" type="text" class="w-full px-3 py-2 rounded-xl border border-[#F5B8CE] bg-[#FFF8FA] text-xs font-bold text-[#4A2036]" />
+              </div>
+              <div>
+                <label class="block text-[10.5px] font-black text-[#7A4961] mb-1">Total Harga (Rp)</label>
+                <input id="editOrdPriceInp" type="number" min="0" step="500" class="w-full px-3 py-2 rounded-xl border border-[#F5B8CE] bg-[#FFF8FA] text-xs font-black text-[#D83162]" />
+              </div>
+            </div>
+            <div class="flex gap-2 pt-1">
+              <button id="cancelAdminEditOrderBtn" type="button" class="flex-1 py-2.5 rounded-xl bg-[#FFF0F6] text-[#7A4961] text-xs font-black cursor-pointer">Batal</button>
+              <button id="saveAdminEditOrderBtn" type="button" class="flex-1 py-2.5 rounded-xl sweet-btn text-xs font-black cursor-pointer">💾 Simpan Perubahan</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(ov);
+        const closeM = () => { ov.classList.add('hidden'); ov.classList.remove('flex'); };
+        document.getElementById('closeAdminEditOrderBtn').addEventListener('click', closeM);
+        document.getElementById('cancelAdminEditOrderBtn').addEventListener('click', closeM);
+        ov.addEventListener('click', (e) => { if (e.target === ov) closeM(); });
+        document.getElementById('saveAdminEditOrderBtn').addEventListener('click', async () => {
+          const id = document.getElementById('editOrdIdInp').value;
+          const target = allOrders.find(o => String(o.id) === String(id));
+          if (!target) return;
+          const curW = parseWarrantyAndDurationFromOrder(target);
+          const newCode = (document.getElementById('editOrdCodeInp').value || '').trim().toUpperCase();
+          const newStatus = document.getElementById('editOrdStatusInp').value;
+          const newInit = (document.getElementById('editOrdInitialsInp').value || '').trim();
+          const newProd = (document.getElementById('editOrdProductInp').value || '').trim();
+          const newCleanPlan = (document.getElementById('editOrdPlanInp').value || '').trim();
+          const newPrice = Math.max(0, Number(document.getElementById('editOrdPriceInp').value) || 0);
+          const encodedPlan = encodePlanLabelWithWarranty(newCleanPlan || curW.cleanPlan, curW.warrantyStatus, curW.expiresAtMs, newCode);
+          const patch = {
+            order_code: newCode,
+            status: newStatus,
+            initials: newInit,
+            product_name: newProd,
+            plan_label: encodedPlan,
+            final_price: newPrice
+          };
+          try {
+            const client = getSupabaseClient();
+            if (client) {
+              const { error } = await client.from('orders').update(patch).eq('id', target.id);
+              if (error) throw error;
+            } else {
+              await supabaseRestRequest(`orders?id=eq.${encodeURIComponent(target.id)}`, { method: 'PATCH', body: JSON.stringify(patch) });
+            }
+            closeM();
+            await fetchAllOrders();
+            showAdminToast(`✅ Pesanan ${newCode} berhasil diperbarui!`);
+          } catch (err) {
+            showAdminToast('⚠️ Gagal simpan edit: ' + (err && err.message ? err.message : 'cek kode duplikat'));
+          }
+        });
+      }
+      document.getElementById('editOrdIdInp').value = ord.id;
+      document.getElementById('editOrdCodeInp').value = curCode;
+      document.getElementById('editOrdStatusInp').value = ord.status || 'WAITING_QRIS';
+      document.getElementById('editOrdInitialsInp').value = ord.initials || '';
+      document.getElementById('editOrdProductInp').value = ord.product_name || '';
+      document.getElementById('editOrdPlanInp').value = wInfo.cleanPlan || '';
+      document.getElementById('editOrdPriceInp').value = Number(ord.final_price) || 0;
+      ov.classList.remove('hidden');
+      ov.classList.add('flex');
+    }
+
+    document.addEventListener('click', function(e) {
+      if (!e.target || !e.target.closest) return;
+      if (e.target.closest('#wipeResetArc0001Btn')) { wipeAndResetToArc0001(); return; }
+      const editBtn = e.target.closest('button[data-action="edit-order"]');
+      if (editBtn) { openAdminEditOrderModal(editBtn.getAttribute('data-id')); }
+    });
 
     function formatRelativeTime(isoString) {
       if (!isoString) return 'Baru saja';
@@ -1528,7 +1714,7 @@ create policy "Allow public read/write orders" on public.orders
           });
 
           firstLoadDone = true;
-          allOrders = rows;
+          allOrders = (rows || []).map(r => (r && String(r.status || '').toUpperCase() === 'QRIS_REQUESTED') ? Object.assign({}, r, { status: 'WAITING_QRIS' }) : r);
           updateConnectionUI(true);
           updateDashboardStatsAndBadges();
           renderQuickOrderChips();
@@ -1718,7 +1904,7 @@ create policy "Allow public read/write orders" on public.orders
             <div class="text-3xl">🐰✨</div>
             <div class="text-sm font-black text-[#4A2036]">Belum ada pesanan di filter ini</div>
             <p class="text-xs font-semibold text-[#7A4961] max-w-md mx-auto leading-relaxed">
-              Klik <strong>"+ Tes Order 🛒"</strong> di atas untuk membuat pesanan simulasi atau pilih tab <strong>"Semua"</strong>.
+              Pesanan baru dari Web Customer akan langsung masuk otomatis di sini secara real-time, atau pilih tab <strong>"Semua"</strong>.
             </p>
           </div>
         `;
@@ -1895,134 +2081,132 @@ create policy "Allow public read/write orders" on public.orders
         }
 
         // =========================================================================
-        // STREAMLINED WARRANTY, DURATION & 1-CLICK WA PANEL
-        // Clean, compact, and organized so it never feels overwhelming
+        // TOTAL OVERHAUL: MODERN ARC COMMAND CARD (SEGMENTED GARANSI + 1-TAP DURASI)
         // =========================================================================
+        const accentStripe = status === 'PAID'
+          ? 'bg-emerald-500'
+          : (status === 'WAITING_QRIS' ? 'bg-[#D83162]' : (status === 'QRIS_SENT' ? 'bg-amber-500' : 'bg-purple-600'));
+
         const warrantyControlHtml = `
-          <div class="rounded-2xl p-3 bg-[#FFF9FB] border border-[#F5B8CE] space-y-2">
-            <!-- Top Row: 1-Click WA Template & Stamp Status -->
-            <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-dashed border-[#F5B8CE]">
-              <div class="flex flex-wrap items-center gap-1.5">
-                <button type="button" data-action="copy-wa-full-template" data-id="${order.id}"
-                        class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white text-[11px] font-black shadow-sm flex items-center gap-1.5 transition cursor-pointer">
-                  <span>📋 Copy Format WA Panduan (${orderCode})</span>
+          <div class="rounded-2xl bg-[#FAFAFC] border border-[#EFE2E8] p-3 space-y-2.5">
+            <!-- Row A: Segmented Garansi Switch + Live Countdown + WA Actions -->
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="inline-flex items-center p-1 rounded-2xl bg-[#F6E8EF] border border-[#ECC8D8] gap-0.5">
+                <button type="button" data-action="set-warranty-stamp" data-id="${order.id}" data-stamp="UNCLAIMED"
+                        class="px-2.5 py-1 rounded-xl text-[10.5px] font-black transition cursor-pointer ${wInfo.warrantyStatus === 'UNCLAIMED' ? 'bg-[#4A2036] text-white shadow-xs' : 'text-[#7A4961] hover:bg-white/60'}">
+                  ⚪ Belum
                 </button>
-                <button type="button" data-action="preview-wa-template" data-id="${order.id}"
-                        class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 text-[10px] font-black transition cursor-pointer">
-                  ✏️ Preview WA
+                <button type="button" data-action="set-warranty-stamp" data-id="${order.id}" data-stamp="CLAIMED"
+                        class="px-2.5 py-1 rounded-xl text-[10.5px] font-black transition cursor-pointer ${wInfo.warrantyStatus === 'CLAIMED' ? 'bg-emerald-600 text-white shadow-xs' : 'text-emerald-800 hover:bg-white/60'}">
+                  🟢 Aktif
                 </button>
-                <button type="button" data-action="download-customer-ticket" data-id="${order.id}"
-                        class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-[#FFF0F6] text-[#9B2358] border border-[#F5B8CE] text-[10px] font-black transition cursor-pointer" title="Download File HTML Tiket Customer">
-                  🎟️ File HTML
+                <button type="button" data-action="set-warranty-stamp" data-id="${order.id}" data-stamp="USED"
+                        class="px-2.5 py-1 rounded-xl text-[10.5px] font-black transition cursor-pointer ${wInfo.warrantyStatus === 'USED' ? 'bg-rose-600 text-white shadow-xs' : 'text-rose-800 hover:bg-white/60'}">
+                  🔴 Terpakai
                 </button>
               </div>
 
-              <div class="flex items-center gap-1.5">
-                ${stampBadgeHtml}
-                <span class="px-2 py-0.5 rounded-md border text-[9.5px] font-extrabold ${durPreview.badgeClass}">
-                  ${durPreview.label}
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="px-2.5 py-1 rounded-xl border text-[10px] font-black ${durPreview.badgeClass}">
+                  ⏳ ${durPreview.label}
                 </span>
+                <button type="button" data-action="copy-wa-full-template" data-id="${order.id}"
+                        class="px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black transition cursor-pointer shadow-xs">
+                  💬 Copy WA
+                </button>
+                <button type="button" data-action="preview-wa-template" data-id="${order.id}"
+                        class="px-2.5 py-1 rounded-xl bg-white hover:bg-[#FFF0F6] text-[#4A2036] border border-[#E6CBD7] text-[10.5px] font-extrabold transition cursor-pointer">
+                  👁️ Preview
+                </button>
+                <button type="button" data-action="download-customer-ticket" data-id="${order.id}" title="Unduh Tiket HTML"
+                        class="px-2 py-1 rounded-xl bg-white hover:bg-[#FFF0F6] text-[#9B2358] border border-[#E6CBD7] text-[10.5px] font-extrabold transition cursor-pointer">
+                  🎟️
+                </button>
               </div>
             </div>
 
-            <!-- Bottom Row: 3 Stamp Toggle Pills + Quick Duration Pills in 1 Clean Grid -->
-            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2">
-              <!-- 3 Stamp Buttons -->
-              <div class="grid grid-cols-3 gap-1.5 flex-1">
-                <button type="button" data-action="set-warranty-stamp" data-id="${order.id}" data-stamp="UNCLAIMED"
-                        class="py-1.5 px-2 rounded-xl border text-[10.5px] font-black flex items-center justify-center gap-1 transition cursor-pointer ${wInfo.warrantyStatus === 'UNCLAIMED' ? 'bg-slate-700 text-white border-slate-800 shadow-sm' : 'bg-white hover:bg-slate-100 text-slate-700 border-slate-300'}">
-                  <span>⚪ Belum Klaim</span>
-                </button>
-                <button type="button" data-action="set-warranty-stamp" data-id="${order.id}" data-stamp="CLAIMED"
-                        class="py-1.5 px-2 rounded-xl border text-[10.5px] font-black flex items-center justify-center gap-1 transition cursor-pointer ${wInfo.warrantyStatus === 'CLAIMED' ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' : 'bg-white hover:bg-emerald-50 text-emerald-800 border-emerald-300'}">
-                  <span>🟢 Diklaim</span>
-                </button>
-                <button type="button" data-action="set-warranty-stamp" data-id="${order.id}" data-stamp="USED"
-                        class="py-1.5 px-2 rounded-xl border text-[10.5px] font-black flex items-center justify-center gap-1 transition cursor-pointer ${wInfo.warrantyStatus === 'USED' ? 'bg-rose-600 text-white border-rose-700 shadow-sm' : 'bg-white hover:bg-rose-50 text-rose-800 border-rose-300'}">
-                  <span>🔴 Terpakai</span>
+            <!-- Row B: 1-Tap Quick Duration Chips + Compact Custom Stepper -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-dashed border-[#EBD4DF]">
+              <div class="flex flex-wrap items-center gap-1">
+                <span class="text-[10px] font-black text-[#8E5670] mr-1">⏱️ Cepat:</span>
+                ${[
+                  {d: 7, lbl: '7H'}, {d: 14, lbl: '14H'}, {d: 30, lbl: '30H'},
+                  {d: 60, lbl: '60H'}, {d: 90, lbl: '90H'}, {d: 365, lbl: '1Thn'}
+                ].map(p => `<button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="${p.d}" class="px-2 py-1 rounded-lg bg-white hover:bg-[#D83162] hover:text-white border border-[#E8CED9] text-[#4A2036] text-[10px] font-black transition cursor-pointer">${p.lbl}</button>`).join('')}
+                <button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="0"
+                        class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-600 hover:text-white border border-rose-200 text-rose-700 text-[10px] font-black transition cursor-pointer">
+                  Habis
                 </button>
               </div>
 
-              <!-- Quick Duration Presets + Custom Setter -->
-              <div class="flex flex-wrap items-center gap-1">
-                <button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="7"
-                        class="px-2 py-1 rounded-lg bg-white hover:bg-[#FFE0EC] border border-[#F5B8CE] text-[10px] font-extrabold text-[#4A2036] cursor-pointer">7H</button>
-                <button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="30"
-                        class="px-2 py-1 rounded-lg bg-white hover:bg-[#FFE0EC] border border-[#F5B8CE] text-[10px] font-extrabold text-[#4A2036] cursor-pointer">1B</button>
-                <button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="90"
-                        class="px-2 py-1 rounded-lg bg-white hover:bg-[#FFE0EC] border border-[#F5B8CE] text-[10px] font-extrabold text-[#4A2036] cursor-pointer">3B</button>
-                <button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="365"
-                        class="px-2 py-1 rounded-lg bg-white hover:bg-[#FFE0EC] border border-[#F5B8CE] text-[10px] font-extrabold text-[#4A2036] cursor-pointer">1T</button>
-                <button type="button" data-action="set-20min-left" data-id="${order.id}"
-                        class="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 border border-amber-300 text-[10px] font-black text-amber-900 cursor-pointer" title="Set sisa 20 menit & tes notif Telegram">
-                  ⏰ 20m
+              <div class="flex items-center gap-1 bg-white px-2 py-1 rounded-xl border border-[#E8CED9]">
+                <input type="number" min="0" max="999" value="30" data-custom-dur-d="${order.id}" title="Hari" class="w-11 text-center text-[10.5px] font-black text-[#4A2036] focus:outline-none" />
+                <span class="text-[9.5px] font-bold text-[#9A637B]">h</span>
+                <input type="number" min="0" max="23" value="0" data-custom-dur-h="${order.id}" title="Jam" class="w-9 text-center text-[10.5px] font-black text-[#4A2036] focus:outline-none border-l border-[#F2DCE6]" />
+                <span class="text-[9.5px] font-bold text-[#9A637B]">j</span>
+                <input type="hidden" value="0" data-custom-dur-m="${order.id}" />
+                <button type="button" data-action="apply-custom-duration" data-id="${order.id}"
+                        class="ml-1 px-2 py-0.5 rounded-lg bg-[#D83162] hover:bg-[#B8224F] text-white text-[10px] font-black cursor-pointer">
+                  Set
                 </button>
-                <button type="button" data-action="set-duration-days" data-id="${order.id}" data-days="0"
-                        class="px-2 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 border border-rose-300 text-[10px] font-extrabold text-rose-700 cursor-pointer" title="Set durasi habis (0 menit)">
-                  Habis
-                </button>
-
-                <div class="inline-flex items-center gap-0.5 bg-white px-1.5 py-0.5 rounded-lg border border-[#F5B8CE]">
-                  <input type="number" data-custom-dur-d="${order.id}" placeholder="H" min="0" value="0" class="w-8 text-center text-[9.5px] font-black text-[#4A2036] bg-[#FFF5F9] rounded py-0.5 border border-[#F5B8CE]" title="Hari" />
-                  <input type="number" data-custom-dur-h="${order.id}" placeholder="J" min="0" value="0" class="w-8 text-center text-[9.5px] font-black text-[#4A2036] bg-[#FFF5F9] rounded py-0.5 border border-[#F5B8CE]" title="Jam" />
-                  <input type="number" data-custom-dur-m="${order.id}" placeholder="M" min="0" value="30" class="w-9 text-center text-[9.5px] font-black text-[#4A2036] bg-[#FFF5F9] rounded py-0.5 border border-[#F5B8CE]" title="Menit" />
-                  <button type="button" data-action="apply-custom-duration" data-id="${order.id}"
-                          class="px-1.5 py-0.5 rounded bg-[#D83162] hover:bg-[#b8224f] text-white text-[9px] font-black cursor-pointer">
-                    Set
-                  </button>
-                </div>
               </div>
             </div>
           </div>
         `;
 
-        // Feedback Box if present
         const cleanFeedback = (order.feedback || '').startsWith('[SURPRISE]:') ? '' : (order.feedback || '');
         const feedbackHtml = cleanFeedback
-          ? `<div class="rounded-xl px-3 py-2 bg-[#FFF0F6] border border-[#F5B8CE] text-[11px] flex items-center gap-2">
+          ? `<div class="rounded-xl px-3 py-2 bg-[#FFF6FA] border border-[#F5C6D8] text-[11px] flex items-center gap-2">
                <span>💌</span>
-               <span class="font-bold text-[#4A2036]"><strong class="text-[#D83162]">Pesan Customer:</strong> "${cleanFeedback}"</span>
+               <span class="font-bold text-[#4A2036]">${cleanFeedback}</span>
              </div>`
           : '';
 
         return `
-          <article class="${cardClass} rounded-[24px] p-3.5 space-y-2.5 transition-all">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <div class="flex items-center gap-2.5">
-                <span class="w-9 h-9 rounded-xl bg-[#4A2036] text-white font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
-                  ${(order.initials || '👀S').split(' ')[0]}
-                </span>
-                <div>
+          <article class="relative bg-white rounded-[24px] border border-[#F0D6E2] shadow-sm hover:shadow-md transition-all overflow-hidden flex">
+            <div class="w-1.5 shrink-0 ${accentStripe}"></div>
+            <div class="flex-1 p-3.5 sm:p-4 space-y-3 min-w-0">
+              <!-- TOP BAR: CODE + PRODUCT + PRICE + STATUS -->
+              <div class="flex flex-wrap items-start justify-between gap-2.5">
+                <div class="space-y-1 min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-1.5">
-                    <button type="button" data-action="copy-order-code" data-code="${orderCode}" title="Klik untuk salin Nomor Pesanan"
-                            class="font-mono-code px-2 py-0.5 rounded-lg bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066] text-[11px] font-black tracking-tight transition cursor-pointer">
+                    <button type="button" data-action="copy-order-code" data-code="${orderCode}" title="Salin Kode"
+                            class="font-mono-code px-2.5 py-0.5 rounded-lg bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066] text-[11px] font-black tracking-wide transition cursor-pointer">
                       ${orderCode} 📋
                     </button>
-                    <span class="text-xs sm:text-sm font-black text-[#4A2036]">${order.product_name || 'PRODUK ARCHIE'}</span>
+                    ${statusBadgeHtml}
                     ${((order.initials || '').includes('Donatur') || (order.plan_label || '').includes('Donatur'))
                       ? '<span class="px-2 py-0.5 rounded-full donatur-badge-admin text-[9px] font-black">👑 Donatur</span>'
                       : ''}
                     <span class="text-[10px] font-bold text-[#9A637B]">• ${timeAgo}</span>
                   </div>
-                  <div class="text-[11px] font-bold text-[#7A4961] mt-0.5">
-                    Customer: <strong class="text-[#4A2036]">${order.initials || '👀S'}</strong> • Paket: <strong class="text-[#9B2358]">${wInfo.cleanPlan}</strong> • Bayar: <strong class="text-emerald-700">${formatRp(order.final_price)}</strong>
+                  <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span class="text-sm font-black text-[#4A2036]">${order.product_name || 'PRODUK ARCHIE'}</span>
+                    <span class="text-[11px] font-bold text-[#8E5670]">👤 ${order.initials || '👀S'} • ${wInfo.cleanPlan}</span>
                   </div>
+                </div>
+
+                <div class="flex items-center gap-2 shrink-0">
+                  <div class="text-right">
+                    <div class="text-base font-black text-[#D83162] leading-tight">${formatRp(order.final_price)}</div>
+                    <div class="text-[9.5px] font-bold text-[#9A637B]">${Number(order.discount_pct || 0) > 0 ? `Diskon -${order.discount_pct}%` : '0% MDR'}</div>
+                  </div>
+                  <button type="button" data-action="edit-order" data-id="${order.id}" title="Edit detail & nomor antrean pesanan"
+                          class="w-8 h-8 rounded-xl bg-[#FFF0F6] hover:bg-[#D83162] text-[#D83162] hover:text-white border border-[#F5B8CE] flex items-center justify-center text-xs transition cursor-pointer">
+                    ✏️
+                  </button>
+                  <button type="button" data-action="delete-order" data-id="${order.id}" title="Hapus pesanan"
+                          class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 flex items-center justify-center text-xs transition cursor-pointer">
+                    🗑️
+                  </button>
                 </div>
               </div>
 
-              <div class="flex items-center gap-1.5">
-                ${statusBadgeHtml}
-                <button type="button" data-action="delete-order" data-id="${order.id}" title="Hapus Pesanan Ini"
-                        class="px-2.5 py-1 rounded-full bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white border border-rose-200 text-[10px] font-black flex items-center gap-1 transition cursor-pointer">
-                  <span>🗑️</span> <span class="hidden sm:inline">Hapus</span>
-                </button>
-              </div>
+              ${secretActionHtml}
+              ${qrisActionHtml}
+              ${warrantyControlHtml}
+              ${feedbackHtml}
             </div>
-
-            ${secretActionHtml}
-            ${qrisActionHtml}
-            ${warrantyControlHtml}
-            ${feedbackHtml}
           </article>
         `;
       }).join('');
@@ -3542,1147 +3726,770 @@ create policy "Allow public read/write orders" on public.orders
 
 </script>
 <script>
-/* ARCHIE'PELAGO ADMIN COMMAND CENTER V3 (FINAL PRODUCTION - POLISHED SAAS UI) */
-(function () {
+// ============================================================================
+// ARCHIE'PELAGO SPARXIE HEDON REFINEMENT v3 (PRODUCTION — WHIMSY & EFFECTIVE)
+// - Tab 1: Antrean & QRIS Live (100% Sparxie Asli + QRIS Upload/Paste/Crop/Send)
+// - Tab 2: Pantau Garansi & Arc (Health Progress Bar + 1-Klik Stempel + Plain Scroll Durasi)
+// - Tab 3: Ekonomi & Celengan Sparxie (Target Omzet Bulanan + 4 Celengan Berlabel Jelas)
+// - Tab 4: Command Center FH
+// - Tab 5: Wall of Love (Kategori After Payment vs After Service + Jam:Menit:Detik, NO Verified text)
+// ============================================================================
+(function() {
   'use strict';
 
-  const STORAGE_SLOTS_KEY = 'archie_admin_master_slots_v3';
-  const STORAGE_CREDITS_KEY = 'archie_admin_store_credits_v3';
-
-  let liveOrders = [];
-  let liveCms = null;
-  let activeNav = 'radar';
-  let activeFilter = 'all';
-  let searchQuery = '';
-  let expandedOrderId = null;
-  let cleanScreenshotMode = false;
-  let masterSlots = [];
-  let storeCredits = [];
-
-  function getSb() {
-    if (window.supabaseClient) return window.supabaseClient;
-    if (window.sb) return window.sb;
-    if (window.supabase && window.ARCHIE_SUPABASE_URL && window.ARCHIE_SUPABASE_ANON_KEY) {
-      window.supabaseClient = window.supabase.createClient(window.ARCHIE_SUPABASE_URL, window.ARCHIE_SUPABASE_ANON_KEY);
-      return window.supabaseClient;
-    }
-    return null;
-  }
-
-  function escapeHtml(s) {
+  function esc(s) {
     return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function rp(n) {
+    return 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
+  }
+  function formatFullWib(dateInput) {
+    const d = dateInput ? new Date(dateInput) : new Date();
+    if (isNaN(d.getTime())) return '-';
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${dd}/${mm}/${yyyy} ${hh}:${mi}:${ss} WIB`;
   }
 
-  function formatRp(n) {
-    return 'Rp ' + Number(n || 0).toLocaleString('id-ID');
-  }
-
-  function showAdminToast(msg, isErr) {
-    let t = document.getElementById('archieProdAdminToast');
-    if (!t) {
-      t = document.createElement('div');
-      t.id = 'archieProdAdminToast';
-      t.style.cssText = 'position:fixed;top:20px;right:20px;z-index:100000;max-width:360px;padding:12px 16px;border-radius:16px;color:#fff;font-size:12px;font-weight:700;box-shadow:0 12px 28px rgba(74,32,54,0.22);transition:opacity .2s;';
-      document.body.appendChild(t);
+  const css = document.createElement('style');
+  css.id = 'sparxieHedonRefineCss';
+  css.textContent = `
+    .sweet-card {
+      background: rgba(255, 255, 255, 0.94) !important;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 10px 28px -8px rgba(216, 49, 98, 0.14), 0 2px 6px rgba(74, 32, 54, 0.05) !important;
+      word-wrap: break-word;
+      overflow-wrap: anywhere;
     }
-    t.textContent = msg;
-    t.style.background = isErr ? '#D83162' : '#593248';
-    t.style.display = 'block';
-    clearTimeout(window.__admToastTimer);
-    window.__admToastTimer = setTimeout(() => { t.style.display = 'none'; }, 3400);
-  }
-
-  /* ===== CONVERTER TEKS ARCHIE (ONLY IN ADMIN.HTML) ===== */
-  function convertToArchieStyle(rawText, tone) {
-    const clean = String(rawText || '').trim();
-    if (!clean) return '';
-    const lines = clean.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-    const body = lines.map((l) => {
-      let out = l
-        .replace(/\bsaya\b/gi, 'mimin')
-        .replace(/\banda\b/gi, 'kakak')
-        .replace(/\bterima kasih\b/gi, 'makasih banyak ya kak')
-        .replace(/\bmaaf\b/gi, 'maaf banget ya kak')
-        .replace(/\bditunggu\b/gi, 'ditunggu sebentar ya kak')
-        .replace(/\bsudah dikirim\b/gi, 'udah mimin kirim ya kak');
-      return out;
-    }).join('\n');
-
-    if (tone === 'handover') {
-      return `Halo kak! 🌸 Pesanan dari Archie'pelago udah siap ya 🐰✨\n\n${body}\n\nKalau ada kendala login atau butuh bantuan, langsung kabarin mimin aja ya kak 🎀 Makasih udah jajan di Archie'pelago! 🌸`;
+    .sparxie-workspace-tab { transition: all .24s cubic-bezier(.34,1.56,.64,1); }
+    .sparxie-workspace-tab:hover { transform: translateY(-1px); }
+    .sparxie-workspace-tab.active {
+      background: linear-gradient(135deg, #D83162 0%, #FF5C8A 100%) !important;
+      color: #fff !important;
+      border-color: transparent !important;
+      box-shadow: 0 8px 20px -4px rgba(216, 49, 98, 0.42);
+      transform: translateY(-1px) scale(1.02);
     }
-    if (tone === 'claim') {
-      return `Halo kak, maaf banget atas kendalanya ya 🥺🌸\n\n${body}\n\nGaransi kakak tetap aman kok, mimin bantu proses sampai beres ya 🐰✨`;
+    .sparxie-glass-panel {
+      background: linear-gradient(145deg, rgba(255,255,255,0.97), rgba(255,245,248,0.95));
+      border: 2px solid #F5B8CE;
+      box-shadow: 0 14px 34px -10px rgba(216, 49, 98, 0.18);
     }
-    if (tone === 'soft') {
-      return `Hai kak! 🌸✨\n\n${body}\n\nKabarin mimin lagi kalau ada yang mau ditanyain ya kak 🐰🎀`;
-    }
-    return `Halo kak! 🌸\n\n${body}\n\n— Mimin Archie'pelago 🐰✨`;
-  }
+    .clean-shot-mode .hide-on-clean-shot { display: none !important; }
+    .clean-shot-mode header { display: none !important; }
+  `;
+  document.head.appendChild(css);
 
-  function loadLocalAdminData() {
-    try {
-      masterSlots = JSON.parse(localStorage.getItem(STORAGE_SLOTS_KEY) || '[]');
-      if (!Array.isArray(masterSlots)) masterSlots = [];
-    } catch (_) { masterSlots = []; }
-    try {
-      storeCredits = JSON.parse(localStorage.getItem(STORAGE_CREDITS_KEY) || '[]');
-      if (!Array.isArray(storeCredits)) storeCredits = [];
-    } catch (_) { storeCredits = []; }
-  }
+  ['surpriseDrawerSection', 'toggleSurpriseDrawerBtn', 'createSimQrisBtn', 'createSimSecretBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+  });
 
-  function saveLocalAdminData() {
-    try {
-      localStorage.setItem(STORAGE_SLOTS_KEY, JSON.stringify(masterSlots));
-      localStorage.setItem(STORAGE_CREDITS_KEY, JSON.stringify(storeCredits));
-    } catch (_) {}
-  }
-
-  function parseMetaFromNotes(notes) {
-    const str = String(notes || '');
-    const mGar = str.match(/GARANSI:([^|\]]+)/i);
-    const mExp = str.match(/EXP:([^|\]]+)/i);
-    const mCode = str.match(/CODE:([^|\]]+)/i);
-    return {
-      warrantyDays: mGar ? Number(mGar[1]) || 30 : 30,
-      expDate: mExp ? mExp[1].trim() : '',
-      refCode: mCode ? mCode[1].trim() : ''
-    };
-  }
-
-  function getOrderRemainingMs(o) {
-    const expStr = o.warranty_expires_at || parseMetaFromNotes(o.notes).expDate;
-    if (!expStr) return null;
-    const t = new Date(expStr).getTime();
-    if (isNaN(t)) return null;
-    return t - Date.now();
-  }
-
-  function formatCountdown(ms) {
-    if (ms == null) return '—';
-    if (ms <= 0) return 'EXPIRED';
-    const d = Math.floor(ms / 86400000);
-    const h = Math.floor((ms % 86400000) / 3600000);
-    const m = Math.floor((ms % 3600000) / 60000);
-    return `${d}H ${String(h).padStart(2, '0')}J ${String(m).padStart(2, '0')}M`;
-  }
-
-  function getStatusBadge(status) {
-    const s = String(status || 'pending').toLowerCase();
-    const map = {
-      pending: { label: 'Menunggu', cls: 'bg-amber-100 text-amber-800' },
-      active: { label: 'Aktif', cls: 'bg-emerald-100 text-emerald-800' },
-      claim: { label: 'Klaim Garansi', cls: 'bg-rose-100 text-rose-700' },
-      refill: { label: 'Butuh Refill', cls: 'bg-purple-100 text-purple-800' },
-      completed: { label: 'Selesai', cls: 'bg-sky-100 text-sky-800' },
-      cancelled: { label: 'Dibatalkan', cls: 'bg-slate-200 text-slate-600' }
-    };
-    const info = map[s] || { label: s, cls: 'bg-[#FFE0EC] text-[#D83162]' };
-    return `<span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold ${info.cls}">${escapeHtml(info.label)}</span>`;
-  }
-
-  function removeLegacyClutter() {
-    ['toggleSurpriseDrawerBtn', 'surpriseDrawerSection', 'floatingSurpriseBtn', 'captionXSection', 'customerChatSection'].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.remove();
+  const pwdInput = document.getElementById('adminLoginPassword');
+  const togglePwdBtn = document.getElementById('toggleAdminPwdBtn');
+  if (togglePwdBtn && pwdInput) {
+    togglePwdBtn.addEventListener('click', () => {
+      const isPwd = pwdInput.type === 'password';
+      pwdInput.type = isPwd ? 'text' : 'password';
+      togglePwdBtn.textContent = isPwd ? '🙈' : '👁️';
+    });
+    pwdInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const btn = document.getElementById('adminLoginSubmitBtn');
+        if (btn) btn.click();
+      }
     });
   }
-
-  function injectSaasStyles() {
-    if (document.getElementById('archieSaasAdminCss')) return;
-    const style = document.createElement('style');
-    style.id = 'archieSaasAdminCss';
-    style.textContent = `
-      body { background: #FFF5F8 !important; color: #4A2036 !important; font-family: 'Plus Jakarta Sans', 'Quicksand', system-ui, sans-serif; }
-      #archieSaasRoot * { box-sizing: border-box; }
-      .saas-nav-btn.active { background: linear-gradient(135deg, #D83162, #FF5C8A); color: #fff !important; box-shadow: 0 6px 16px rgba(216,49,98,0.22); }
-      .saas-pill.active { background: #4A2036; color: #fff !important; border-color: #4A2036; }
-      .split-flap { display: inline-flex; gap: 3px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-      .split-flap span { background: #4A2036; color: #FFF5F8; padding: 2px 6px; border-radius: 6px; font-weight: 800; font-size: 11px; }
-      .clean-shot-active .hide-in-shot { display: none !important; }
-    `;
-    document.head.appendChild(style);
-  }
-
-  function mountSaasShell() {
-    removeLegacyClutter();
-    injectSaasStyles();
-
-    // Hide legacy non-auth sections cleanly while keeping #adminAuthOverlay intact
-    Array.from(document.body.children).forEach((ch) => {
-      if (ch.id === 'adminAuthOverlay' || ch.id === 'archieSaasRoot' || ch.tagName === 'SCRIPT' || ch.tagName === 'STYLE') return;
-      ch.style.display = 'none';
-    });
-
-    let root = document.getElementById('archieSaasRoot');
-    if (root) return;
-
-    root = document.createElement('div');
-    root.id = 'archieSaasRoot';
-    root.className = 'min-h-screen flex flex-col lg:flex-row bg-[#FFF5F8] text-[#4A2036]';
-    root.innerHTML = `
-      <!-- DESKTOP LEFT SIDEBAR -->
-      <aside class="hide-in-shot hidden lg:flex lg:flex-col w-64 shrink-0 bg-white border-r-2 border-[#FCD2E3] p-5 sticky top-0 h-screen justify-between">
-        <div class="space-y-6">
-          <div class="flex items-center gap-3 px-1">
-            <div class="w-11 h-11 rounded-2xl bg-[#FFE0EC] flex items-center justify-center text-2xl shadow-sm">🌸</div>
-            <div class="min-w-0">
-              <div class="text-base font-extrabold text-[#4A2036] leading-tight truncate">Archie'pelago</div>
-              <div class="text-[11px] font-bold text-[#D83162]">Admin Command Center</div>
-            </div>
-          </div>
-
-          <nav class="space-y-1.5">
-            <button data-nav="radar" class="saas-nav-btn active w-full text-left px-4 py-3 rounded-2xl text-xs font-extrabold text-[#4A2036] hover:bg-[#FFE0EC]/60 transition flex items-center gap-2.5">📡 Radar Pesanan</button>
-            <button data-nav="economy" class="saas-nav-btn w-full text-left px-4 py-3 rounded-2xl text-xs font-extrabold text-[#4A2036] hover:bg-[#FFE0EC]/60 transition flex items-center gap-2.5">💰 Ekonomi & 4 Kantong</button>
-            <button data-nav="fh" class="saas-nav-btn w-full text-left px-4 py-3 rounded-2xl text-xs font-extrabold text-[#4A2036] hover:bg-[#FFE0EC]/60 transition flex items-center gap-2.5">🤝 Command Center FH</button>
-            <button data-nav="love" class="saas-nav-btn w-full text-left px-4 py-3 rounded-2xl text-xs font-extrabold text-[#4A2036] hover:bg-[#FFE0EC]/60 transition flex items-center gap-2.5">💌 Wall of Love</button>
-            <button data-nav="settings" class="saas-nav-btn w-full text-left px-4 py-3 rounded-2xl text-xs font-extrabold text-[#4A2036] hover:bg-[#FFE0EC]/60 transition flex items-center gap-2.5">⚙️ Pengaturan & CMS</button>
-          </nav>
-
-          <div class="pt-4 border-t border-[#FFE0EC] space-y-2">
-            <button id="openConverterDrawerBtn" class="w-full px-4 py-3 rounded-2xl bg-[#FFF5F8] border-2 border-[#FCD2E3] text-[#D83162] text-xs font-extrabold hover:bg-[#FFE0EC] transition text-left flex items-center justify-between">
-              <span>🪄 Converter Teks Archie</span>
-              <span>→</span>
-            </button>
-            <a href="/editor" class="block w-full px-4 py-3 rounded-2xl bg-[#FFE0EC]/70 text-[#4A2036] text-xs font-extrabold hover:bg-[#FFE0EC] transition">✏️ Buka Live CMS Editor ↗</a>
-          </div>
-        </div>
-
-        <div class="space-y-2 pt-4 border-t border-[#FFE0EC]">
-          <button id="adminRefreshOrdersBtn" class="w-full px-3.5 py-2.5 rounded-xl bg-[#FFF5F8] border border-[#FCD2E3] text-xs font-bold text-[#6D3B53] hover:bg-[#FFE0EC]">🔄 Sinkronkan Data Live</button>
-          <button id="adminSaasLogoutBtn" class="w-full px-3.5 py-2.5 rounded-xl bg-[#FFE0EC] text-[#D83162] text-xs font-extrabold hover:bg-[#FCD2E3]">Keluar Admin</button>
-        </div>
-      </aside>
-
-      <!-- MAIN CONTENT AREA -->
-      <main class="flex-1 min-w-0 p-4 sm:p-6 pb-24 lg:pb-8 max-w-7xl mx-auto w-full space-y-5">
-        <!-- Mobile Top Bar -->
-        <div class="hide-in-shot flex lg:hidden items-center justify-between bg-white border-2 border-[#FCD2E3] rounded-3xl p-4 shadow-sm">
-          <div class="flex items-center gap-2.5">
-            <span class="w-9 h-9 rounded-xl bg-[#FFE0EC] flex items-center justify-center text-lg">🌸</span>
-            <div>
-              <div class="text-sm font-extrabold text-[#4A2036]">Archie'pelago Admin</div>
-              <div class="text-[11px] font-bold text-[#D83162]">Live Production</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-2">
-            <button id="mobileConverterBtn" class="px-3 py-2 rounded-xl bg-[#FFE0EC] text-[#D83162] text-xs font-extrabold">🪄 Converter</button>
-            <a href="/editor" class="px-3 py-2 rounded-xl bg-[#FFF5F8] border border-[#FCD2E3] text-[#4A2036] text-xs font-extrabold">✏️ CMS</a>
-          </div>
-        </div>
-
-        <!-- AREA 1: RADAR PESANAN -->
-        <section id="area_radar" class="saas-area space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 class="text-xl sm:text-2xl font-extrabold text-[#4A2036]">📡 Radar Pesanan & Monitoring ARC</h1>
-              <p class="text-xs text-[#6D3B53]">Data live langsung dari Supabase. Klik baris pesanan untuk membuka X-Ray Drawer & Intip Layar Garansi.</p>
-            </div>
-            <div class="flex items-center gap-2">
-              <button id="openNewOrderModalBtn" class="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white text-xs font-extrabold shadow-md hover:opacity-95">+ Catat Pesanan Manual</button>
-            </div>
-          </div>
-
-          <!-- KPI Strip -->
-          <div id="radarKpiStrip" class="grid grid-cols-2 lg:grid-cols-4 gap-4"></div>
-
-          <!-- Omni-Search & 10 Filter Pills -->
-          <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm space-y-3.5">
-            <input id="adminOmniSearch" type="text" placeholder="Cari kode ARC-XXXXX, nama aplikasi, kontak WA, atau email akun..." class="w-full px-4 py-3 rounded-2xl border border-[#FCD2E3] bg-[#FFF5F8] text-sm font-medium text-[#4A2036] focus:outline-none focus:border-[#D83162]" />
-            <div id="adminFilterPills" class="flex flex-wrap gap-2"></div>
-          </div>
-
-          <!-- Orders List -->
-          <div id="adminOrdersList" class="space-y-3.5"></div>
-        </section>
-
-        <!-- AREA 2: EKONOMI & 4 KANTONG -->
-        <section id="area_economy" class="saas-area hidden space-y-5"></section>
-
-        <!-- AREA 3: COMMAND CENTER FH -->
-        <section id="area_fh" class="saas-area hidden space-y-5"></section>
-
-        <!-- AREA 4: WALL OF LOVE -->
-        <section id="area_love" class="saas-area hidden space-y-5"></section>
-
-        <!-- AREA 5: PENGATURAN & CMS -->
-        <section id="area_settings" class="saas-area hidden space-y-5"></section>
-      </main>
-
-      <!-- MOBILE BOTTOM NAVIGATION -->
-      <nav class="hide-in-shot fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-white/95 backdrop-blur-md border-t-2 border-[#FCD2E3] px-2 py-2 grid grid-cols-5 gap-1">
-        <button data-nav="radar" class="saas-nav-btn active py-2 rounded-xl text-[10px] font-extrabold text-[#4A2036] flex flex-col items-center"><span>📡</span><span>Radar</span></button>
-        <button data-nav="economy" class="saas-nav-btn py-2 rounded-xl text-[10px] font-extrabold text-[#4A2036] flex flex-col items-center"><span>💰</span><span>Ekonomi</span></button>
-        <button data-nav="fh" class="saas-nav-btn py-2 rounded-xl text-[10px] font-extrabold text-[#4A2036] flex flex-col items-center"><span>🤝</span><span>FH & Slot</span></button>
-        <button data-nav="love" class="saas-nav-btn py-2 rounded-xl text-[10px] font-extrabold text-[#4A2036] flex flex-col items-center"><span>💌</span><span>Love</span></button>
-        <button data-nav="settings" class="saas-nav-btn py-2 rounded-xl text-[10px] font-extrabold text-[#4A2036] flex flex-col items-center"><span>⚙️</span><span>Menu</span></button>
-      </nav>
-
-      <!-- SLIDE-OVER DRAWER: CONVERTER TEKS ARCHIE (ONLY IN ADMIN) -->
-      <div id="converterDrawerBackdrop" class="hidden fixed inset-0 z-[9990] bg-[#4A2036]/50 backdrop-blur-sm flex justify-end">
-        <div class="w-full max-w-md bg-white h-full p-6 shadow-2xl border-l-2 border-[#FCD2E3] flex flex-col gap-4 overflow-y-auto">
-          <div class="flex items-center justify-between pb-3 border-b border-[#FFE0EC]">
-            <div>
-              <h3 class="text-base font-extrabold text-[#4A2036]">🪄 Converter Teks Khas Archie</h3>
-              <p class="text-xs text-[#6D3B53]">Ubah teks mentah jadi gaya hangat & ramah khas Mimin Archie.</p>
-            </div>
-            <button id="closeConverterDrawerBtn" class="w-8 h-8 rounded-full bg-[#FFE0EC] text-[#D83162] font-extrabold">✕</button>
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-[#6D3B53] mb-1">Gaya Pesan</label>
-            <select id="convToneSelect" class="w-full px-3.5 py-2.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold text-[#4A2036]">
-              <option value="handover">🌸 Serah Terima Akun (Handover)</option>
-              <option value="claim">🥺 Respon Klaim Garansi</option>
-              <option value="soft">🐰 Balasan Santai / Follow-up</option>
-              <option value="default">✨ Standar Khas Archie</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-xs font-bold text-[#6D3B53] mb-1">Teks Mentah</label>
-            <textarea id="convRawInput" rows="5" placeholder="Ketik atau tempel info mentah di sini (misal: email akun, info perbaikan, dsb)..." class="w-full px-3.5 py-2.5 rounded-2xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs text-[#4A2036]"></textarea>
-          </div>
-          <button id="convRunBtn" class="w-full py-3 rounded-2xl bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white text-xs font-extrabold shadow-md">✨ Konversi ke Gaya Archie</button>
-          <div class="space-y-2 flex-1">
-            <div class="flex items-center justify-between">
-              <label class="text-xs font-bold text-[#6D3B53]">Hasil Siap Kirim</label>
-              <button id="convCopyBtn" class="px-3 py-1 rounded-lg bg-[#FFE0EC] text-[#D83162] text-[11px] font-extrabold">📋 Salin Hasil</button>
-            </div>
-            <textarea id="convOutputBox" rows="7" readonly class="w-full px-3.5 py-2.5 rounded-2xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs text-[#4A2036]"></textarea>
-          </div>
-        </div>
-      </div>
-
-      <!-- LIVE TICKET MIRROR MODAL (INTIP LAYAR GARANSI TANPA PIN) -->
-      <div id="ticketMirrorModal" class="hidden fixed inset-0 z-[9995] bg-[#4A2036]/60 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="w-full max-w-md bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-2xl space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-extrabold text-[#4A2036]">👁️ Intip Layar Garansi Customer</h3>
-            <button id="closeMirrorModalBtn" class="w-8 h-8 rounded-full bg-[#FFE0EC] text-[#D83162] font-extrabold">✕</button>
-          </div>
-          <div id="ticketMirrorCard" class="p-5 rounded-3xl bg-[#FFF5F8] border-2 border-[#FCD2E3] space-y-3 text-[#4A2036]"></div>
-          <div class="flex justify-end gap-2">
-            <button id="downloadMirrorPngBtn" class="px-4 py-2 rounded-xl bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white text-xs font-extrabold">📸 Simpan PNG Tiket</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- WA HANDOVER MODAL (WITH CONVERTER) -->
-      <div id="waHandoverModal" class="hidden fixed inset-0 z-[9995] bg-[#4A2036]/60 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="w-full max-w-lg bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-2xl space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-extrabold text-[#4A2036]">💬 Kirim WA Handover & Converter</h3>
-            <button id="closeHandoverModalBtn" class="w-8 h-8 rounded-full bg-[#FFE0EC] text-[#D83162] font-extrabold">✕</button>
-          </div>
-          <textarea id="handoverMsgBox" rows="7" class="w-full px-4 py-3 rounded-2xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs text-[#4A2036]"></textarea>
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <button id="handoverConvertBtn" class="px-3.5 py-2 rounded-xl bg-[#FFE0EC] text-[#D83162] text-xs font-extrabold">🪄 Poles Gaya Archie</button>
-            <div class="flex items-center gap-2">
-              <button id="handoverCopyBtn" class="px-3.5 py-2 rounded-xl bg-[#FFF5F8] border border-[#FCD2E3] text-[#4A2036] text-xs font-bold">📋 Salin</button>
-              <a id="handoverWaLink" href="#" target="_blank" class="px-4 py-2 rounded-xl bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white text-xs font-extrabold">Kirim via WA ↗</a>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- MANUAL ORDER MODAL -->
-      <div id="manualOrderModal" class="hidden fixed inset-0 z-[9995] bg-[#4A2036]/60 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="w-full max-w-md bg-white border-2 border-[#FCD2E3] rounded-3xl p-6 shadow-2xl space-y-4">
-          <div class="flex items-center justify-between">
-            <h3 class="text-base font-extrabold text-[#4A2036]">+ Catat Pesanan Manual</h3>
-            <button id="closeManualOrderBtn" class="w-8 h-8 rounded-full bg-[#FFE0EC] text-[#D83162] font-extrabold">✕</button>
-          </div>
-          <div class="space-y-3">
-            <input id="moProduct" type="text" placeholder="Nama Aplikasi & Paket (misal: Netflix 1P1U 1 Bulan)" class="w-full px-3.5 py-2.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-            <div class="grid grid-cols-2 gap-2">
-              <input id="moPrice" type="number" placeholder="Harga Jual (Rp)" class="w-full px-3.5 py-2.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-              <input id="moCost" type="number" placeholder="Modal FH (Rp)" class="w-full px-3.5 py-2.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-            </div>
-            <input id="moCustomer" type="text" placeholder="Kontak WA / Username Customer" class="w-full px-3.5 py-2.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs" />
-            <input id="moAccount" type="text" placeholder="Email / Info Akun (opsional)" class="w-full px-3.5 py-2.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs" />
-            <div class="grid grid-cols-2 gap-2">
-              <input id="moDays" type="number" value="30" placeholder="Durasi Garansi (Hari)" class="w-full px-3.5 py-2.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-              <input id="moPin" type="text" placeholder="PIN 4-6 digit (otomatis jika kosong)" class="w-full px-3.5 py-2.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs" />
-            </div>
-          </div>
-          <button id="saveManualOrderBtn" class="w-full py-3 rounded-2xl bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white text-xs font-extrabold shadow-md">Simpan ke Supabase</button>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(root);
-    wireShellEvents();
-  }
-
-  function wireShellEvents() {
-    document.querySelectorAll('[data-nav]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        activeNav = btn.getAttribute('data-nav');
-        document.querySelectorAll('[data-nav]').forEach((b) => {
-          b.classList.toggle('active', b.getAttribute('data-nav') === activeNav);
-        });
-        document.querySelectorAll('.saas-area').forEach((sec) => sec.classList.add('hidden'));
-        const target = document.getElementById('area_' + activeNav);
-        if (target) target.classList.remove('hidden');
-        renderCurrentArea();
-      });
-    });
-
-    const openConv = () => document.getElementById('converterDrawerBackdrop').classList.remove('hidden');
-    const closeConv = () => document.getElementById('converterDrawerBackdrop').classList.add('hidden');
-    document.getElementById('openConverterDrawerBtn').addEventListener('click', openConv);
-    document.getElementById('mobileConverterBtn').addEventListener('click', openConv);
-    document.getElementById('closeConverterDrawerBtn').addEventListener('click', closeConv);
-    document.getElementById('convRunBtn').addEventListener('click', () => {
-      const raw = document.getElementById('convRawInput').value;
-      const tone = document.getElementById('convToneSelect').value;
-      document.getElementById('convOutputBox').value = convertToArchieStyle(raw, tone);
-    });
-    document.getElementById('convCopyBtn').addEventListener('click', () => {
-      const txt = document.getElementById('convOutputBox').value;
-      if (!txt) return;
-      navigator.clipboard.writeText(txt).then(() => showAdminToast('Hasil konversi disalin ke clipboard!'));
-    });
-
-    document.getElementById('adminRefreshOrdersBtn').addEventListener('click', () => fetchAllLiveData(true));
-    document.getElementById('adminSaasLogoutBtn').addEventListener('click', async () => {
-      const sb = getSb();
-      if (sb) await sb.auth.signOut();
+  const logoutBtn = document.getElementById('adminLogoutHeaderBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      try {
+        const c = (typeof getSupabaseClient === 'function') ? getSupabaseClient() : null;
+        if (c && c.auth) await c.auth.signOut();
+      } catch (_) {}
       location.reload();
     });
-
-    document.getElementById('adminOmniSearch').addEventListener('input', (e) => {
-      searchQuery = e.target.value.toLowerCase().trim();
-      renderRadarArea();
-    });
-
-    document.getElementById('closeMirrorModalBtn').addEventListener('click', () => {
-      document.getElementById('ticketMirrorModal').classList.add('hidden');
-    });
-    document.getElementById('downloadMirrorPngBtn').addEventListener('click', async () => {
-      const card = document.getElementById('ticketMirrorCard');
-      if (!window.html2canvas) { showAdminToast('Library html2canvas belum siap.', true); return; }
-      const canvas = await window.html2canvas(card, { scale: 2, backgroundColor: '#FFF5F8' });
-      const a = document.createElement('a');
-      a.download = 'tiket-garansi-mirror.png';
-      a.href = canvas.toDataURL('image/png');
-      a.click();
-    });
-
-    document.getElementById('closeHandoverModalBtn').addEventListener('click', () => {
-      document.getElementById('waHandoverModal').classList.add('hidden');
-    });
-    document.getElementById('handoverConvertBtn').addEventListener('click', () => {
-      const box = document.getElementById('handoverMsgBox');
-      box.value = convertToArchieStyle(box.value, 'handover');
-    });
-    document.getElementById('handoverCopyBtn').addEventListener('click', () => {
-      navigator.clipboard.writeText(document.getElementById('handoverMsgBox').value)
-        .then(() => showAdminToast('Pesan handover disalin!'));
-    });
-
-    document.getElementById('openNewOrderModalBtn').addEventListener('click', () => {
-      document.getElementById('manualOrderModal').classList.remove('hidden');
-    });
-    document.getElementById('closeManualOrderBtn').addEventListener('click', () => {
-      document.getElementById('manualOrderModal').classList.add('hidden');
-    });
-    document.getElementById('saveManualOrderBtn').addEventListener('click', createManualOrder);
   }
 
-  async function createManualOrder() {
-    const sb = getSb();
-    if (!sb) return;
-    const prod = document.getElementById('moProduct').value.trim();
-    const price = Number(document.getElementById('moPrice').value || 0);
-    const cost = Number(document.getElementById('moCost').value || 0);
-    const cust = document.getElementById('moCustomer').value.trim();
-    const acc = document.getElementById('moAccount').value.trim();
-    const days = Number(document.getElementById('moDays').value || 30);
-    const pin = document.getElementById('moPin').value.trim() || String(Math.floor(1000 + Math.random() * 9000));
-    if (!prod) { showAdminToast('Isi nama aplikasi & paket terlebih dahulu.', true); return; }
+  const mainEl = document.querySelector('main');
+  if (!mainEl) return;
+  const originalSections = Array.from(mainEl.children);
 
-    const code = 'ARC-' + String(Math.floor(10000 + Math.random() * 90000));
-    const expDate = new Date(Date.now() + days * 86400000).toISOString();
-    const payload = {
-      order_code: code,
-      product_name: prod,
-      total_price: price,
-      fh_cost: cost,
-      customer_contact: cust,
-      account_email: acc,
-      warranty_pin: pin,
-      warranty_expires_at: expDate,
-      status: 'active',
-      notes: `[GARANSI:${days}|EXP:${expDate.slice(0, 10)}|CODE:${code}]`
-    };
-    const { error } = await sb.from('orders').insert(payload);
-    if (error) {
-      showAdminToast('Gagal menyimpan pesanan: ' + error.message, true);
-      return;
-    }
-    document.getElementById('manualOrderModal').classList.add('hidden');
-    showAdminToast('Pesanan ' + code + ' tersimpan ke Supabase!');
-    await fetchAllLiveData(false);
+  const navWrap = document.createElement('section');
+  navWrap.id = 'sparxieWorkspaceNav';
+  navWrap.className = 'hide-on-clean-shot sweet-card rounded-[24px] p-2 border-2 border-[#F5B8CE] flex flex-wrap items-center justify-between gap-2';
+  navWrap.innerHTML = `
+    <div class="flex flex-wrap items-center gap-1.5">
+      <button type="button" data-ws="orders" class="sparxie-workspace-tab active px-3.5 py-2 rounded-2xl text-xs font-black bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE] cursor-pointer">
+        📡 Antrean &amp; QRIS
+      </button>
+      <button type="button" data-ws="pantau" class="sparxie-workspace-tab px-3.5 py-2 rounded-2xl text-xs font-black bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE] cursor-pointer">
+        🐰 Pantau Arc &amp; Garansi
+      </button>
+      <button type="button" data-ws="economy" class="sparxie-workspace-tab px-3.5 py-2 rounded-2xl text-xs font-black bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE] cursor-pointer">
+        🍓 Ekonomi &amp; Celengan
+      </button>
+      <button type="button" data-ws="fh" class="sparxie-workspace-tab px-3.5 py-2 rounded-2xl text-xs font-black bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE] cursor-pointer">
+        🤝 Command Center FH
+      </button>
+      <button type="button" data-ws="love" class="sparxie-workspace-tab px-3.5 py-2 rounded-2xl text-xs font-black bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE] cursor-pointer">
+        💌 Wall of Love
+      </button>
+    </div>
+    <div class="text-[10.5px] font-extrabold text-[#9A637B] px-2 hidden xl:block">
+      🌸 Sparxie Studio Command • 100% Data Live
+    </div>
+  `;
+  mainEl.insertBefore(navWrap, mainEl.firstChild);
+
+  const extraPanelsWrap = document.createElement('div');
+  extraPanelsWrap.id = 'sparxieExtraPanels';
+  extraPanelsWrap.className = 'hidden space-y-4';
+  extraPanelsWrap.innerHTML = `
+    <section id="wsPanel_pantau" class="hidden space-y-4"></section>
+    <section id="wsPanel_economy" class="hidden space-y-4"></section>
+    <section id="wsPanel_fh" class="hidden space-y-4"></section>
+    <section id="wsPanel_love" class="hidden space-y-4"></section>
+  `;
+  mainEl.appendChild(extraPanelsWrap);
+
+  let currentWs = 'orders';
+  let pantauFilter = 'ALL';
+  let pantauQuery = '';
+  let loveCategory = 'ALL'; // ALL | AFTER_PAYMENT | AFTER_SERVICE
+  let stressPct = 10;
+  let cleanShot = false;
+  let monthlyTarget = Number(localStorage.getItem('archie_monthly_target') || 3000000);
+
+  function getOrdersSafe() {
+    try { return Array.isArray(allOrders) ? allOrders : []; } catch (_) { return []; }
   }
 
-  async function fetchAllLiveData(notify) {
-    const sb = getSb();
-    if (!sb) return;
-    try {
-      const { data: ordData, error } = await sb.from('orders').select('*').order('created_at', { ascending: false }).limit(500);
-      if (!error && Array.isArray(ordData)) liveOrders = ordData;
-    } catch (e) { console.warn(e); }
+  // ===== TAB 2: PANTAU ARC & GARANSI (WHIMSICAL + 1-KLIK LANGSUNG KERJA!) =====
+  function renderPantauPanel() {
+    const el = document.getElementById('wsPanel_pantau');
+    if (!el) return;
+    const orders = getOrdersSafe();
+    const now = Date.now();
 
-    if (window.ArchieLiveCms && typeof window.ArchieLiveCms.fetchLive === 'function') {
-      liveCms = await window.ArchieLiveCms.fetchLive();
-    } else {
-      liveCms = window.ARCHIE_CMS_DEFAULTS || { catalog: [], adminUi: { fhDirectory: [] } };
-    }
-
-    renderCurrentArea();
-    if (notify) showAdminToast('Data live Supabase disinkronkan (' + liveOrders.length + ' pesanan).');
-  }
-
-  function renderCurrentArea() {
-    if (activeNav === 'radar') renderRadarArea();
-    else if (activeNav === 'economy') renderEconomyArea();
-    else if (activeNav === 'fh') renderFhArea();
-    else if (activeNav === 'love') renderLoveArea();
-    else if (activeNav === 'settings') renderSettingsArea();
-  }
-
-  function renderRadarArea() {
-    const total = liveOrders.length;
-    const activeCnt = liveOrders.filter((o) => o.status === 'active').length;
-    const claimCnt = liveOrders.filter((o) => o.status === 'claim').length;
-    const pendingCnt = liveOrders.filter((o) => o.status === 'pending').length;
-
-    document.getElementById('radarKpiStrip').innerHTML = `
-      <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-4 shadow-sm">
-        <div class="text-[11px] font-bold text-[#6D3B53]">Total Pesanan Live</div>
-        <div class="text-2xl font-extrabold text-[#4A2036] mt-1">${total}</div>
-      </div>
-      <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-4 shadow-sm">
-        <div class="text-[11px] font-bold text-[#6D3B53]">Garansi Aktif</div>
-        <div class="text-2xl font-extrabold text-emerald-700 mt-1">${activeCnt}</div>
-      </div>
-      <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-4 shadow-sm">
-        <div class="text-[11px] font-bold text-[#6D3B53]">Menunggu Proses</div>
-        <div class="text-2xl font-extrabold text-amber-600 mt-1">${pendingCnt}</div>
-      </div>
-      <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-4 shadow-sm">
-        <div class="text-[11px] font-bold text-[#6D3B53]">Klaim Garansi</div>
-        <div class="text-2xl font-extrabold text-[#D83162] mt-1">${claimCnt}</div>
-      </div>
-    `;
-
-    const filters = [
-      { id: 'all', label: 'Semua' },
-      { id: 'pending', label: 'Menunggu' },
-      { id: 'active', label: 'Aktif' },
-      { id: 'refill', label: 'Butuh Refill' },
-      { id: 'claim', label: 'Klaim Garansi' },
-      { id: 'expiring', label: 'Hampir Habis (<5H)' },
-      { id: 'completed', label: 'Selesai' },
-      { id: 'cancelled', label: 'Dibatalkan' },
-      { id: 'feedback', label: 'Ada Feedback' },
-      { id: 'no_account', label: 'Belum Isi Akun' }
-    ];
-
-    const pillsEl = document.getElementById('adminFilterPills');
-    pillsEl.innerHTML = filters.map((f) => `
-      <button type="button" data-filter="${f.id}" class="saas-pill ${activeFilter === f.id ? 'active' : ''} px-3 py-1.5 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold text-[#4A2036] hover:bg-[#FFE0EC] transition">${f.label}</button>
-    `).join('');
-    pillsEl.querySelectorAll('[data-filter]').forEach((b) => {
-      b.addEventListener('click', () => {
-        activeFilter = b.getAttribute('data-filter');
-        renderRadarArea();
-      });
+    const parsed = orders.map(o => {
+      const w = (typeof parseWarrantyAndDurationFromOrder === 'function')
+        ? parseWarrantyAndDurationFromOrder(o)
+        : { warrantyStatus: o.warranty_status || 'UNCLAIMED', expiresAtMs: null, cleanPlan: o.plan_label || '-' };
+      const expMs = o.expires_at ? new Date(o.expires_at).getTime() : w.expiresAtMs;
+      const startMs = o.paid_at ? new Date(o.paid_at).getTime() : (o.created_at ? new Date(o.created_at).getTime() : now);
+      const totalSpan = expMs ? Math.max(3600000, expMs - startMs) : (30 * 86400000);
+      const remMs = expMs ? (expMs - now) : null;
+      const healthPct = remMs == null ? 0 : Math.max(0, Math.min(100, Math.round((remMs / totalSpan) * 100)));
+      const code = (typeof formatOrderCode === 'function') ? formatOrderCode(o.id, o) : (o.order_code || o.id);
+      const st = String(o.warranty_status || w.warrantyStatus || 'UNCLAIMED').toUpperCase();
+      return { o, w, expMs, remMs, healthPct, code, st };
     });
 
-    const filtered = liveOrders.filter((o) => {
-      if (activeFilter === 'pending' && o.status !== 'pending') return false;
-      if (activeFilter === 'active' && o.status !== 'active') return false;
-      if (activeFilter === 'refill' && o.status !== 'refill') return false;
-      if (activeFilter === 'claim' && o.status !== 'claim') return false;
-      if (activeFilter === 'completed' && o.status !== 'completed') return false;
-      if (activeFilter === 'cancelled' && o.status !== 'cancelled') return false;
-      if (activeFilter === 'feedback' && !o.feedback_text) return false;
-      if (activeFilter === 'no_account' && o.account_email) return false;
-      if (activeFilter === 'expiring') {
-        const rem = getOrderRemainingMs(o);
-        if (rem == null || rem <= 0 || rem > 5 * 86400000) return false;
-      }
-      if (searchQuery) {
-        const hay = [o.order_code, o.product_name, o.customer_contact, o.account_email, o.notes].join(' ').toLowerCase();
-        if (!hay.includes(searchQuery)) return false;
+    const cntActive = parsed.filter(x => x.st === 'CLAIMED' && (x.remMs == null || x.remMs > 0)).length;
+    const cntSoon = parsed.filter(x => x.remMs != null && x.remMs > 0 && x.remMs <= 24 * 3600000).length;
+    const cntExp = parsed.filter(x => x.remMs != null && x.remMs <= 0).length;
+    const cntClaim = parsed.filter(x => String(x.o.claim_status || '').toUpperCase() === 'IN_CLAIM').length;
+
+    const filtered = parsed.filter(x => {
+      if (pantauFilter === 'ACTIVE' && !(x.st === 'CLAIMED' && (x.remMs == null || x.remMs > 0))) return false;
+      if (pantauFilter === 'SOON' && !(x.remMs != null && x.remMs > 0 && x.remMs <= 24 * 3600000)) return false;
+      if (pantauFilter === 'EXPIRED' && !(x.remMs != null && x.remMs <= 0)) return false;
+      if (pantauFilter === 'CLAIM' && String(x.o.claim_status || '').toUpperCase() !== 'IN_CLAIM') return false;
+      if (pantauFilter === 'UNCLAIMED' && x.st !== 'UNCLAIMED') return false;
+      if (pantauQuery) {
+        const hay = `${x.code} ${x.o.initials || ''} ${x.o.product_name || ''} ${x.w.cleanPlan || ''} ${x.o.fh_name || ''}`.toLowerCase();
+        if (!hay.includes(pantauQuery)) return false;
       }
       return true;
     });
 
-    const listEl = document.getElementById('adminOrdersList');
-    if (filtered.length === 0) {
-      listEl.innerHTML = `
-        <div class="bg-white border-2 border-dashed border-[#FCD2E3] rounded-3xl p-10 text-center space-y-2">
-          <div class="text-3xl">🐰</div>
-          <div class="text-sm font-extrabold text-[#4A2036]">Belum ada pesanan pada filter ini.</div>
-          <div class="text-xs text-[#6D3B53]">Pesanan baru dari Web Customer atau input manual akan muncul otomatis di sini.</div>
-        </div>
-      `;
-      return;
+    function fmtRem(ms) {
+      if (ms == null) return 'Belum diset';
+      if (ms <= 0) return 'Habis (Expired)';
+      const d = Math.floor(ms / 86400000);
+      const h = Math.floor((ms % 86400000) / 3600000);
+      const m = Math.floor((ms % 3600000) / 60000);
+      return `${d} Hari ${h} Jam ${m} Mnt`;
     }
 
-    listEl.innerHTML = filtered.map((o) => {
-      const rem = getOrderRemainingMs(o);
-      const isOpen = expandedOrderId === o.id;
-      const profit = Number(o.total_price || 0) - Number(o.fh_cost || 0);
-      return `
-        <div class="bg-white border-2 ${isOpen ? 'border-[#D83162]' : 'border-[#FCD2E3]'} rounded-3xl p-5 shadow-sm transition">
-          <div data-toggle-order="${escapeHtml(o.id)}" class="cursor-pointer flex flex-wrap items-center justify-between gap-3">
-            <div class="min-w-0 space-y-1">
-              <div class="flex flex-wrap items-center gap-2">
-                <span class="font-mono text-xs font-extrabold px-2.5 py-1 rounded-lg bg-[#FFE0EC] text-[#D83162]">${escapeHtml(o.order_code || 'ARC-???')}</span>
-                ${getStatusBadge(o.status)}
-                <span class="text-sm font-extrabold text-[#4A2036]">${escapeHtml(o.product_name || 'Produk')}</span>
-              </div>
-              <div class="text-xs text-[#6D3B53] flex flex-wrap items-center gap-3">
-                <span>Jual: <b>${formatRp(o.total_price)}</b></span>
-                <span>Modal: <b>${formatRp(o.fh_cost)}</b></span>
-                <span class="${profit >= 0 ? 'text-emerald-700' : 'text-rose-700'}">Margin: <b>${formatRp(profit)}</b></span>
-                <span>Kontak: ${escapeHtml(o.customer_contact || '—')}</span>
-              </div>
-            </div>
-            <div class="flex items-center gap-3">
-              <div class="split-flap"><span>${formatCountdown(rem)}</span></div>
-              <span class="text-xs font-extrabold text-[#D83162]">${isOpen ? 'Tutup ▲' : 'X-Ray ▼'}</span>
-            </div>
-          </div>
+    const rowsHtml = filtered.length === 0
+      ? `<div class="p-8 text-center rounded-3xl bg-white/90 border-2 border-dashed border-[#F5B8CE] space-y-1">
+           <div class="text-2xl">🐰✨</div>
+           <div class="text-xs font-black text-[#4A2036]">Belum ada pesanan di kategori pantauan ini~</div>
+         </div>`
+      : filtered.map(x => {
+          const isExp = x.remMs != null && x.remMs <= 0;
+          const isSoon = !isExp && x.remMs != null && x.remMs <= 24 * 3600000;
+          const moodBadge = isExp
+            ? '<span class="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px] font-black">😿 Sudah Habis</span>'
+            : (isSoon
+              ? '<span class="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">⚡ Hampir Habis!</span>'
+              : '<span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">🐰 Aman Sentosa</span>');
+          const barColor = isExp ? 'bg-rose-500' : (isSoon ? 'bg-amber-400' : 'bg-gradient-to-r from-emerald-400 to-teal-500');
 
-          ${isOpen ? `
-            <div class="mt-4 pt-4 border-t border-[#FFE0EC] space-y-4">
-              <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label class="block text-[11px] font-bold text-[#6D3B53] mb-1">Status Pesanan</label>
-                  <select data-ord-status="${escapeHtml(o.id)}" class="w-full px-3 py-2 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold">
-                    ${['pending', 'active', 'refill', 'claim', 'completed', 'cancelled'].map((st) => `<option value="${st}" ${o.status === st ? 'selected' : ''}>${st.toUpperCase()}</option>`).join('')}
-                  </select>
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-[#6D3B53] mb-1">Modal FH (Rp)</label>
-                  <input data-ord-cost="${escapeHtml(o.id)}" type="number" value="${Number(o.fh_cost || 0)}" class="w-full px-3 py-2 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-[#6D3B53] mb-1">PIN Garansi</label>
-                  <input data-ord-pin="${escapeHtml(o.id)}" type="text" value="${escapeHtml(o.warranty_pin || '')}" class="w-full px-3 py-2 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-mono font-bold" />
-                </div>
-                <div class="md:col-span-2">
-                  <label class="block text-[11px] font-bold text-[#6D3B53] mb-1">Email / Detail Akun</label>
-                  <input data-ord-acc="${escapeHtml(o.id)}" type="text" value="${escapeHtml(o.account_email || '')}" class="w-full px-3 py-2 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs" />
-                </div>
-                <div>
-                  <label class="block text-[11px] font-bold text-[#6D3B53] mb-1">Habis Garansi</label>
-                  <input data-ord-exp="${escapeHtml(o.id)}" type="date" value="${escapeHtml((o.warranty_expires_at || '').slice(0, 10))}" class="w-full px-3 py-2 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-                </div>
-              </div>
-
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <div class="flex flex-wrap gap-2">
-                  <button type="button" data-mirror-order="${escapeHtml(o.id)}" class="px-3.5 py-2 rounded-xl bg-[#FFF5F8] border border-[#FCD2E3] text-[#4A2036] text-xs font-extrabold hover:bg-[#FFE0EC]">👁️ Intip Layar Garansi</button>
-                  <button type="button" data-handover-order="${escapeHtml(o.id)}" class="px-3.5 py-2 rounded-xl bg-[#FFE0EC] text-[#D83162] text-xs font-extrabold hover:bg-[#FCD2E3]">💬 WA Handover + Converter</button>
-                </div>
-                <button type="button" data-save-order="${escapeHtml(o.id)}" class="px-4 py-2 rounded-xl bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white text-xs font-extrabold shadow-sm">💾 Simpan Perubahan</button>
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      `;
-    }).join('');
-
-    listEl.querySelectorAll('[data-toggle-order]').forEach((el) => {
-      el.addEventListener('click', () => {
-        const id = el.getAttribute('data-toggle-order');
-        expandedOrderId = (expandedOrderId === id) ? null : id;
-        renderRadarArea();
-      });
-    });
-
-    listEl.querySelectorAll('[data-save-order]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = btn.getAttribute('data-save-order');
-        const sb = getSb();
-        if (!sb) return;
-        const patch = {
-          status: listEl.querySelector(`[data-ord-status="${id}"]`).value,
-          fh_cost: Number(listEl.querySelector(`[data-ord-cost="${id}"]`).value || 0),
-          warranty_pin: listEl.querySelector(`[data-ord-pin="${id}"]`).value.trim(),
-          account_email: listEl.querySelector(`[data-ord-acc="${id}"]`).value.trim()
-        };
-        const expVal = listEl.querySelector(`[data-ord-exp="${id}"]`).value;
-        if (expVal) patch.warranty_expires_at = new Date(expVal + 'T23:59:59+07:00').toISOString();
-        const { error } = await sb.from('orders').update(patch).eq('id', id);
-        if (error) { showAdminToast('Gagal update: ' + error.message, true); return; }
-        showAdminToast('Perubahan pesanan tersimpan ke Supabase!');
-        await fetchAllLiveData(false);
-      });
-    });
-
-    listEl.querySelectorAll('[data-mirror-order]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const o = liveOrders.find((x) => String(x.id) === btn.getAttribute('data-mirror-order'));
-        if (!o) return;
-        const rem = getOrderRemainingMs(o);
-        document.getElementById('ticketMirrorCard').innerHTML = `
-          <div class="text-center border-b border-dashed border-[#FCD2E3] pb-3">
-            <div class="text-xs font-extrabold tracking-widest text-[#D83162]">🌸 ARCHIE'PELAGO WARRANTY 🌸</div>
-            <div class="text-xl font-black mt-1">${escapeHtml(o.order_code)}</div>
-            <div class="mt-1">${getStatusBadge(o.status)}</div>
-          </div>
-          <div class="space-y-1.5 text-xs">
-            <div class="flex justify-between"><span class="text-[#6D3B53]">Produk</span><b>${escapeHtml(o.product_name)}</b></div>
-            <div class="flex justify-between"><span class="text-[#6D3B53]">PIN Portal</span><b class="font-mono">${escapeHtml(o.warranty_pin || '—')}</b></div>
-            <div class="flex justify-between"><span class="text-[#6D3B53]">Sisa Masa Garansi</span><b class="text-[#D83162]">${formatCountdown(rem)}</b></div>
-            <div class="flex justify-between"><span class="text-[#6D3B53]">Berakhir</span><b>${escapeHtml((o.warranty_expires_at || '—').slice(0, 10))}</b></div>
-          </div>
-        `;
-        document.getElementById('ticketMirrorModal').classList.remove('hidden');
-      });
-    });
-
-    listEl.querySelectorAll('[data-handover-order]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const o = liveOrders.find((x) => String(x.id) === btn.getAttribute('data-handover-order'));
-        if (!o) return;
-        const tpl = (liveCms && liveCms.adminUi && liveCms.adminUi.handoverWaTemplate)
-          || "Halo kak! 🌸 Pesanan {product_name} ({order_code}) udah aktif ya 🐰✨\nLink Garansi: {warranty_url}\nPIN: {pin}\nAktif sampai: {exp_date}";
-        const wUrl = location.origin + '/garansi?code=' + encodeURIComponent(o.order_code || '');
-        const msg = tpl
-          .replace(/\{order_code\}/g, o.order_code || '')
-          .replace(/\{product_name\}/g, o.product_name || '')
-          .replace(/\{warranty_url\}/g, wUrl)
-          .replace(/\{pin\}/g, o.warranty_pin || '—')
-          .replace(/\{exp_date\}/g, (o.warranty_expires_at || '—').slice(0, 10));
-        document.getElementById('handoverMsgBox').value = msg;
-        const phone = String(o.customer_contact || '').replace(/[^0-9]/g, '');
-        document.getElementById('handoverWaLink').href = phone
-          ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
-          : `https://wa.me/?text=${encodeURIComponent(msg)}`;
-        document.getElementById('waHandoverModal').classList.remove('hidden');
-      });
-    });
-  }
-
-  function renderEconomyArea() {
-    const validOrders = liveOrders.filter((o) => o.status !== 'cancelled');
-    const omzet = validOrders.reduce((s, o) => s + Number(o.total_price || 0), 0);
-    const modal = validOrders.reduce((s, o) => s + Number(o.fh_cost || 0), 0);
-    const gross = omzet - modal;
-    const reserve = Math.round(Math.max(0, gross) * 0.15);
-    const netProfit = Math.max(0, gross - reserve);
-    const activeExposure = liveOrders.filter((o) => o.status === 'active' || o.status === 'claim').reduce((s, o) => s + Number(o.fh_cost || 0), 0);
-    const creditTotal = storeCredits.reduce((s, c) => s + Number(c.amount || 0), 0);
-    const reserveRatio = activeExposure > 0 ? Math.min(100, Math.round((reserve / (activeExposure * 0.25)) * 100)) : 100;
-
-    const sec = document.getElementById('area_economy');
-    sec.innerHTML = `
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 class="text-xl sm:text-2xl font-extrabold text-[#4A2036]">💰 Ekonomi & 4 Kantong Uang</h1>
-          <p class="text-xs text-[#6D3B53]">Pemisahan otomatis modal FH, dana cadangan garansi, profit bersih, dan simulasi risiko.</p>
-        </div>
-        <button id="exportCsvBtn" class="px-4 py-2.5 rounded-2xl bg-[#4A2036] text-white text-xs font-extrabold hover:opacity-95">📥 Export CSV Pesanan</button>
-      </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm">
-          <div class="text-xs font-bold text-[#6D3B53]">1. Kantong Modal FH</div>
-          <div class="text-xl font-extrabold text-[#4A2036] mt-1">${formatRp(modal)}</div>
-          <div class="text-[11px] text-[#6D3B53] mt-1">Dari total omzet ${formatRp(omzet)}</div>
-        </div>
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm">
-          <div class="text-xs font-bold text-[#6D3B53]">2. Cadangan Garansi (15%)</div>
-          <div class="text-xl font-extrabold text-[#D83162] mt-1">${formatRp(reserve)}</div>
-          <div class="text-[11px] text-[#6D3B53] mt-1">Eksposur aktif: ${formatRp(activeExposure)}</div>
-        </div>
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm">
-          <div class="text-xs font-bold text-[#6D3B53]">3. Profit Bersih Siap Tarik</div>
-          <div class="text-xl font-extrabold text-emerald-700 mt-1">${formatRp(netProfit)}</div>
-          <div class="text-[11px] text-[#6D3B53] mt-1">Setelah modal & cadangan</div>
-        </div>
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm">
-          <div class="text-xs font-bold text-[#6D3B53]">4. Store Credit / Liability</div>
-          <div class="text-xl font-extrabold text-amber-700 mt-1">${formatRp(creditTotal)}</div>
-          <div class="text-[11px] text-[#6D3B53] mt-1">${storeCredits.length} catatan saldo customer</div>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <!-- Reserve Shortfall & Wipe Simulator -->
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm space-y-4">
-          <h3 class="text-sm font-extrabold text-[#4A2036]">🛡️ Reserve Shortfall Meter & Wipe Simulator</h3>
-          <div>
-            <div class="flex justify-between text-xs font-bold mb-1">
-              <span>Kesehatan Dana Cadangan</span>
-              <span class="${reserveRatio >= 80 ? 'text-emerald-700' : 'text-[#D83162]'}">${reserveRatio}%</span>
-            </div>
-            <div class="w-full h-3 rounded-full bg-[#FFE0EC] overflow-hidden">
-              <div class="h-full rounded-full bg-gradient-to-r from-[#D83162] to-[#FF5C8A]" style="width:${reserveRatio}%"></div>
-            </div>
-          </div>
-          <div class="p-4 rounded-2xl bg-[#FFF5F8] border border-[#FCD2E3] space-y-2">
-            <div class="flex justify-between text-xs font-bold">
-              <span>Simulasi Mass Wipe (Persentase Akun Tumbang)</span>
-              <span id="wipePctLabel" class="text-[#D83162]">20%</span>
-            </div>
-            <input id="wipeSlider" type="range" min="5" max="100" step="5" value="20" class="w-full accent-[#D83162]" />
-            <div id="wipeImpactOut" class="text-xs text-[#4A2036] font-semibold"></div>
-          </div>
-        </div>
-
-        <!-- Prorated Refund Calculator -->
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm space-y-3">
-          <h3 class="text-sm font-extrabold text-[#4A2036]">🧮 Kalkulator Prorated Refund</h3>
-          <div class="grid grid-cols-3 gap-2">
-            <div>
-              <label class="block text-[11px] font-bold text-[#6D3B53] mb-1">Harga Jual (Rp)</label>
-              <input id="prPrice" type="number" value="35000" class="w-full px-3 py-2 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-[#6D3B53] mb-1">Total Hari</label>
-              <input id="prTotal" type="number" value="30" class="w-full px-3 py-2 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-[#6D3B53] mb-1">Sudah Dipakai</label>
-              <input id="prUsed" type="number" value="10" class="w-full px-3 py-2 rounded-xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs font-bold" />
-            </div>
-          </div>
-          <div id="prResult" class="p-3.5 rounded-2xl bg-[#FFF5F8] border border-[#FCD2E3] text-xs font-bold text-[#4A2036]"></div>
-        </div>
-      </div>
-    `;
-
-    const updateWipe = () => {
-      const pct = Number(document.getElementById('wipeSlider').value);
-      document.getElementById('wipePctLabel').textContent = pct + '%';
-      const costHit = Math.round(activeExposure * (pct / 100));
-      const diff = reserve - costHit;
-      document.getElementById('wipeImpactOut').innerHTML = diff >= 0
-        ? `Estimasi biaya replace: <b>${formatRp(costHit)}</b> — <span class="text-emerald-700">Aman, surplus ${formatRp(diff)}</span>`
-        : `Estimasi biaya replace: <b>${formatRp(costHit)}</b> — <span class="text-[#D83162]">Shortfall ${formatRp(Math.abs(diff))}</span>`;
-    };
-    document.getElementById('wipeSlider').addEventListener('input', updateWipe);
-    updateWipe();
-
-    const updateProrate = () => {
-      const p = Number(document.getElementById('prPrice').value || 0);
-      const t = Math.max(1, Number(document.getElementById('prTotal').value || 30));
-      const u = Math.min(t, Math.max(0, Number(document.getElementById('prUsed').value || 0)));
-      const remDays = t - u;
-      const refund = Math.round((remDays / t) * p);
-      document.getElementById('prResult').innerHTML = `Sisa <b>${remDays} hari</b> dari ${t} hari → Nominal Refund / Store Credit: <span class="text-[#D83162] text-sm">${formatRp(refund)}</span>`;
-    };
-    ['prPrice', 'prTotal', 'prUsed'].forEach((id) => document.getElementById(id).addEventListener('input', updateProrate));
-    updateProrate();
-
-    document.getElementById('exportCsvBtn').addEventListener('click', () => {
-      const header = ['order_code', 'product_name', 'status', 'total_price', 'fh_cost', 'customer_contact', 'created_at'];
-      const rows = liveOrders.map((o) => header.map((k) => `"${String(o[k] == null ? '' : o[k]).replace(/"/g, '""')}"`).join(','));
-      const csv = [header.join(',')].concat(rows).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'archiepelago_orders_' + new Date().toISOString().slice(0, 10) + '.csv';
-      a.click();
-    });
-  }
-
-  function renderFhArea() {
-    const fhs = (liveCms && liveCms.adminUi && Array.isArray(liveCms.adminUi.fhDirectory)) ? liveCms.adminUi.fhDirectory : [];
-    const sec = document.getElementById('area_fh');
-    sec.innerHTML = `
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 class="text-xl sm:text-2xl font-extrabold text-[#4A2036]">🤝 Command Center FH & Slot Induk</h1>
-          <p class="text-xs text-[#6D3B53]">Direktori supplier live dari CMS, Smart Paste anti-double-assign, dan grid slot akun induk.</p>
-        </div>
-        <a href="/editor" class="px-4 py-2 rounded-2xl bg-[#FFE0EC] text-[#D83162] text-xs font-extrabold">✏️ Kelola Daftar FH di CMS ↗</a>
-      </div>
-
-      <!-- 4x 1-Click FH Messages -->
-      <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm space-y-3">
-        <h3 class="text-sm font-extrabold text-[#4A2036]">⚡ 4x Pesan Cepat ke First Hand (1-Klik Salin)</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
-          <button data-fh-msg="Halo kak, mau order stok baru untuk aplikasi [NAMA APP] paket [PLAN] durasi [DURASI] ya. Ready kah?" class="fh-quick-btn p-3 rounded-2xl bg-[#FFF5F8] border border-[#FCD2E3] text-left text-xs font-bold hover:bg-[#FFE0EC]">🛒 Order Stok Baru</button>
-          <button data-fh-msg="Halo kak, izin lapor kendala garansi untuk akun [EMAIL]. Mohon bantu cek atau replace ya kak, makasih!" class="fh-quick-btn p-3 rounded-2xl bg-[#FFF5F8] border border-[#FCD2E3] text-left text-xs font-bold hover:bg-[#FFE0EC]">🚨 Lapor Kendala / Klaim</button>
-          <button data-fh-msg="Halo kak, akun [EMAIL] sudah waktunya refill/perpanjang. Boleh bantu proses refill hari ini ya kak?" class="fh-quick-btn p-3 rounded-2xl bg-[#FFF5F8] border border-[#FCD2E3] text-left text-xs font-bold hover:bg-[#FFE0EC]">🔄 Minta Refill Akun</button>
-          <button data-fh-msg="Halo kak, sudah mimin transfer ya untuk orderan barusan. Ditunggu detail akunnya, makasih banyak!" class="fh-quick-btn p-3 rounded-2xl bg-[#FFF5F8] border border-[#FCD2E3] text-left text-xs font-bold hover:bg-[#FFE0EC]">💸 Konfirmasi Transfer</button>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        <!-- Smart Paste + Anti Double Assign -->
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm space-y-3">
-          <h3 class="text-sm font-extrabold text-[#4A2036]">📋 Smart Paste & Cek Anti-Double-Assign</h3>
-          <textarea id="smartPasteInput" rows="4" placeholder="Tempel teks akun dari FH (email, profil, pin) untuk cek otomatis apakah sudah terpakai di pesanan aktif..." class="w-full px-3.5 py-2.5 rounded-2xl border border-[#FCD2E3] bg-[#FFF5F8] text-xs"></textarea>
-          <button id="smartPasteCheckBtn" class="px-4 py-2 rounded-xl bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white text-xs font-extrabold">🔍 Cek Duplikat di Pesanan Aktif</button>
-          <div id="smartPasteResult" class="text-xs"></div>
-        </div>
-
-        <!-- FH Directory -->
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm space-y-3">
-          <h3 class="text-sm font-extrabold text-[#4A2036]">📇 Direktori First Hand (${fhs.length})</h3>
-          ${fhs.length === 0
-            ? '<p class="text-xs text-[#6D3B53]">Belum ada FH di CMS. Tambahkan lewat Editor.html → Tab 3 Web Admin.</p>'
-            : `<div class="space-y-2 max-h-60 overflow-y-auto">${fhs.map((f) => `
-                <div class="p-3 rounded-2xl bg-[#FFF5F8] border border-[#FCD2E3]">
-                  <div class="text-xs font-extrabold text-[#4A2036]">${escapeHtml(f.name || 'Supplier')}</div>
-                  <div class="text-[11px] text-[#6D3B53]">Kontak: ${escapeHtml(f.contact || '—')} · ${escapeHtml(f.specialty || 'Umum')}</div>
-                  ${f.note ? `<div class="text-[11px] text-[#D83162] mt-0.5">${escapeHtml(f.note)}</div>` : ''}
-                </div>
-              `).join('')}</div>`
-          }
-        </div>
-      </div>
-
-      <!-- Master Account Slot Grid -->
-      <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h3 class="text-sm font-extrabold text-[#4A2036]">🧩 Master Account Slot Grid & Break-Even</h3>
-            <p class="text-xs text-[#6D3B53]">Pantau slot terisi pada akun induk sharing (Netflix, Spotify Famplan, Canva, dll).</p>
-          </div>
-          <button id="addMasterSlotBtn" class="px-3.5 py-2 rounded-xl bg-[#FFE0EC] text-[#D83162] text-xs font-extrabold">+ Tambah Akun Induk</button>
-        </div>
-        <div id="masterSlotGrid" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
-      </div>
-    `;
-
-    sec.querySelectorAll('.fh-quick-btn').forEach((b) => {
-      b.addEventListener('click', () => {
-        navigator.clipboard.writeText(b.getAttribute('data-fh-msg')).then(() => showAdminToast('Template pesan FH disalin!'));
-      });
-    });
-
-    document.getElementById('smartPasteCheckBtn').addEventListener('click', () => {
-      const txt = document.getElementById('smartPasteInput').value;
-      const emailMatch = txt.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-      const out = document.getElementById('smartPasteResult');
-      if (!emailMatch) {
-        out.innerHTML = '<div class="p-3 rounded-xl bg-amber-50 text-amber-800 font-bold">Tidak ditemukan alamat email pada teks yang ditempel.</div>';
-        return;
-      }
-      const email = emailMatch[0].toLowerCase();
-      const hits = liveOrders.filter((o) => o.status === 'active' && String(o.account_email || '').toLowerCase().includes(email));
-      if (hits.length > 0) {
-        out.innerHTML = `<div class="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-bold">⚠️ Terdeteksi dipakai di ${hits.length} pesanan aktif: ${hits.map((h) => escapeHtml(h.order_code)).join(', ')}</div>`;
-      } else {
-        out.innerHTML = `<div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold">✅ Email ${escapeHtml(email)} bersih — belum terpakai di pesanan aktif mana pun.</div>`;
-      }
-    });
-
-    document.getElementById('addMasterSlotBtn').addEventListener('click', () => {
-      const name = prompt('Nama Akun Induk (misal: Netflix Induk #01):');
-      if (!name) return;
-      const total = Math.max(1, Number(prompt('Total Slot (misal: 5):', '5') || 5));
-      const cost = Number(prompt('Modal Akun Induk (Rp):', '120000') || 0);
-      const pricePerSlot = Number(prompt('Harga Jual Per Slot (Rp):', '32000') || 0);
-      masterSlots.unshift({ id: Date.now().toString(36), name, total, used: 0, cost, pricePerSlot });
-      saveLocalAdminData();
-      renderMasterSlots();
-    });
-
-    renderMasterSlots();
-  }
-
-  function renderMasterSlots() {
-    const grid = document.getElementById('masterSlotGrid');
-    if (!grid) return;
-    if (masterSlots.length === 0) {
-      grid.innerHTML = '<div class="md:col-span-2 p-6 rounded-2xl bg-[#FFF5F8] border border-dashed border-[#FCD2E3] text-xs text-[#6D3B53] text-center">Belum ada akun induk tercatat. Klik "+ Tambah Akun Induk" untuk mulai melacak slot & break-even.</div>';
-      return;
-    }
-    grid.innerHTML = masterSlots.map((m, idx) => {
-      const rev = m.used * m.pricePerSlot;
-      const bep = rev >= m.cost;
-      return `
-        <div class="p-4 rounded-2xl bg-[#FFF5F8] border border-[#FCD2E3] space-y-2.5">
-          <div class="flex items-center justify-between">
-            <div class="text-xs font-extrabold text-[#4A2036]">${escapeHtml(m.name)}</div>
-            <button data-del-slot="${idx}" class="text-[11px] font-bold text-[#D83162]">Hapus</button>
-          </div>
-          <div class="flex flex-wrap gap-1.5">
-            ${Array.from({ length: m.total }).map((_, i) => `
-              <button data-toggle-slot="${idx}:${i + 1}" class="px-2.5 py-1 rounded-lg text-[11px] font-extrabold ${i < m.used ? 'bg-[#D83162] text-white' : 'bg-white border border-[#FCD2E3] text-[#6D3B53]'}">Slot ${i + 1}</button>
-            `).join('')}
-          </div>
-          <div class="text-[11px] flex justify-between font-bold">
-            <span>Terisi: ${m.used}/${m.total}</span>
-            <span class="${bep ? 'text-emerald-700' : 'text-amber-700'}">${bep ? '✅ Break-Even' : 'Omzet ' + formatRp(rev) + ' / Modal ' + formatRp(m.cost)}</span>
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    grid.querySelectorAll('[data-toggle-slot]').forEach((b) => {
-      b.addEventListener('click', () => {
-        const [idx, num] = b.getAttribute('data-toggle-slot').split(':').map(Number);
-        masterSlots[idx].used = (masterSlots[idx].used === num) ? num - 1 : num;
-        saveLocalAdminData();
-        renderMasterSlots();
-      });
-    });
-    grid.querySelectorAll('[data-del-slot]').forEach((b) => {
-      b.addEventListener('click', () => {
-        masterSlots.splice(Number(b.getAttribute('data-del-slot')), 1);
-        saveLocalAdminData();
-        renderMasterSlots();
-      });
-    });
-  }
-
-  function renderLoveArea() {
-    const feedbacks = liveOrders.filter((o) => o.feedback_text && String(o.feedback_text).trim().length > 0);
-    const sec = document.getElementById('area_love');
-    sec.innerHTML = `
-      <div class="hide-in-shot flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 class="text-xl sm:text-2xl font-extrabold text-[#4A2036]">💌 Wall of Love Feedback Gallery</h1>
-          <p class="text-xs text-[#6D3B53]">Ulasan asli dari Portal Garansi. Aktifkan Mode Screenshot Bersih atau ekspor PNG tersensor otomatis.</p>
-        </div>
-        <button id="toggleCleanShotBtn" class="px-4 py-2.5 rounded-2xl bg-[#FFE0EC] text-[#D83162] text-xs font-extrabold">${cleanScreenshotMode ? '✕ Keluar Mode Screenshot' : '📸 Mode Screenshot Bersih'}</button>
-      </div>
-
-      ${cleanScreenshotMode ? `<button id="exitCleanShotFloating" class="fixed top-4 right-4 z-50 px-4 py-2 rounded-full bg-[#4A2036] text-white text-xs font-extrabold shadow-lg">✕ Keluar Mode Screenshot</button>` : ''}
-
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        ${feedbacks.length === 0
-          ? '<div class="md:col-span-3 bg-white border-2 border-dashed border-[#FCD2E3] rounded-3xl p-10 text-center text-xs text-[#6D3B53]">Belum ada feedback customer yang masuk dari Web Garansi.</div>'
-          : feedbacks.map((f, idx) => {
-              const maskedCode = String(f.order_code || 'ARC-XXXXX').replace(/\d{3}$/, '***');
-              const stars = '🌸'.repeat(Math.min(5, Math.max(1, Number(f.rating || 5))));
-              return `
-                <div id="loveCard_${idx}" class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-5 shadow-sm flex flex-col justify-between gap-4">
-                  <div class="space-y-2.5">
-                    <div class="flex items-center justify-between">
-                      <span class="px-2.5 py-1 rounded-full bg-[#FFE0EC] text-[#D83162] text-[11px] font-extrabold">${escapeHtml(f.product_name || 'Archie\'pelago')}</span>
-                      <span class="text-xs">${stars}</span>
-                    </div>
-                    <p class="text-sm font-medium text-[#4A2036] leading-relaxed">"${escapeHtml(f.feedback_text)}"</p>
+          return `
+            <div class="rounded-[24px] bg-white border-2 border-[#F5B8CE] p-4 space-y-3 shadow-sm hover:shadow-md transition">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="space-y-1 min-w-0">
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <span class="px-2.5 py-0.5 rounded-xl bg-[#4A2036] text-[#FFE066] text-[11px] font-black">${esc(x.code)}</span>
+                    <span class="text-xs sm:text-sm font-black text-[#4A2036]">${esc(x.o.product_name || 'App Premium')}</span>
+                    ${moodBadge}
                   </div>
-                  <div class="flex items-center justify-between pt-3 border-t border-[#FFE0EC]">
-                    <span class="text-[11px] font-mono font-bold text-[#6D3B53]">${escapeHtml(maskedCode)} · Verified Buyer</span>
-                    <button data-export-love="${idx}" class="hide-in-shot px-3 py-1.5 rounded-xl bg-[#FFF5F8] border border-[#FCD2E3] text-[#D83162] text-[11px] font-extrabold hover:bg-[#FFE0EC]">📥 PNG Tersensor</button>
+                  <div class="text-[11px] font-bold text-[#7A4961]">
+                    👤 ${esc(x.o.initials || '-')} • 📦 ${esc(x.w.cleanPlan || '-')} • 🔑 PIN: <code class="px-1.5 py-0.5 rounded bg-[#FFF0F6] text-[#D83162]">${esc(x.o.access_pin || '-')}</code>
+                  </div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div class="text-[11px] font-black text-[#4A2036]">⏳ ${fmtRem(x.remMs)}</div>
+                  <div class="text-[10px] font-bold text-[#9A637B]">📸 Struk: ${x.o.receipt_saved_at ? formatFullWib(x.o.receipt_saved_at) : 'Belum disimpan'}</div>
+                </div>
+              </div>
+
+              <!-- HEALTH BAR SISA MASA AKTIF -->
+              <div class="space-y-1">
+                <div class="flex justify-between text-[10px] font-extrabold text-[#7A4961]">
+                  <span>Kesehatan Masa Aktif</span>
+                  <span>${x.remMs == null ? '—' : x.healthPct + '% tersisa'}</span>
+                </div>
+                <div class="w-full h-2.5 rounded-full bg-[#FFF0F6] overflow-hidden border border-[#F5C6D8]">
+                  <div style="width:${x.remMs == null ? 0 : x.healthPct}%" class="h-full ${barColor} rounded-full transition-all duration-500"></div>
+                </div>
+              </div>
+
+              <!-- 1-KLIK KONTROL LANGSUNG DI PANTAU (STEMPEL + SCROLL DURASI PLAIN) -->
+              <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-dashed border-[#F5C6D8]">
+                <div class="flex flex-wrap items-center gap-1">
+                  <button type="button" data-p-stamp="${esc(x.o.id)}" data-val="UNCLAIMED" class="px-2.5 py-1 rounded-xl text-[10px] font-black border cursor-pointer ${x.st==='UNCLAIMED' ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200'}">⚪ Belum</button>
+                  <button type="button" data-p-stamp="${esc(x.o.id)}" data-val="CLAIMED" class="px-2.5 py-1 rounded-xl text-[10px] font-black border cursor-pointer ${x.st==='CLAIMED' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-emerald-700 border-emerald-200'}">🟢 Aktif</button>
+                  <button type="button" data-p-stamp="${esc(x.o.id)}" data-val="USED" class="px-2.5 py-1 rounded-xl text-[10px] font-black border cursor-pointer ${x.st==='USED' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-rose-700 border-rose-200'}">🔴 Terpakai</button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <select data-p-days="${esc(x.o.id)}" class="px-2 py-1 rounded border border-[#E5C6D4] bg-white text-[10.5px] font-bold text-[#4A2036]">
+                    <option value="1">1 Hari</option>
+                    <option value="7">7 Hari</option>
+                    <option value="14">14 Hari</option>
+                    <option value="30" selected>30 Hari</option>
+                    <option value="60">60 Hari</option>
+                    <option value="90">90 Hari</option>
+                    <option value="180">180 Hari</option>
+                    <option value="365">365 Hari</option>
+                  </select>
+                  <button type="button" data-p-setdur="${esc(x.o.id)}" class="px-2.5 py-1 rounded-xl bg-[#D83162] text-white text-[10px] font-black cursor-pointer">Set Durasi</button>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+    el.innerHTML = `
+      <div class="sparxie-glass-panel rounded-[28px] p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span class="px-2.5 py-0.5 rounded-full bg-[#FFE0EC] text-[#D83162] text-[10px] font-black uppercase tracking-wider">🐰 SPARXIE WARRANTY RADAR</span>
+            <h2 class="text-base sm:text-lg font-black text-[#4A2036] mt-1">Pantau &amp; Atur Setiap ARC Langsung dari Sini</h2>
+            <p class="text-xs font-semibold text-[#7A4961]">Lihat sisa waktu, ubah stempel garansi, atau perpanjang durasi dalam 1 klik tanpa buka Web Garansi.</p>
+          </div>
+          <input id="pantauSearchInp" type="text" value="${esc(pantauQuery)}" placeholder="🔎 Cari ARC, nama, app..." class="px-3.5 py-2 rounded-2xl border-2 border-[#F5B8CE] bg-white text-xs font-bold text-[#4A2036] w-full sm:w-64" />
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div class="rounded-2xl bg-white border-2 border-emerald-200 p-3"><div class="text-[10px] font-extrabold text-emerald-700">🐰 Aman &amp; Aktif</div><div class="text-xl font-black text-emerald-800">${cntActive}</div></div>
+          <div class="rounded-2xl bg-white border-2 border-amber-200 p-3"><div class="text-[10px] font-extrabold text-amber-700">⚡ Hampir Habis (&lt;24J)</div><div class="text-xl font-black text-amber-800">${cntSoon}</div></div>
+          <div class="rounded-2xl bg-white border-2 border-rose-200 p-3"><div class="text-[10px] font-extrabold text-rose-700">😿 Expired</div><div class="text-xl font-black text-rose-800">${cntExp}</div></div>
+          <div class="rounded-2xl bg-white border-2 border-[#F5B8CE] p-3"><div class="text-[10px] font-extrabold text-[#D83162]">🛠️ Dalam Klaim</div><div class="text-xl font-black text-[#D83162]">${cntClaim}</div></div>
+        </div>
+
+        <div class="flex flex-wrap gap-1.5">
+          ${[
+            {id:'ALL', label:'Semua (' + parsed.length + ')'},
+            {id:'ACTIVE', label:'🐰 Aktif'},
+            {id:'SOON', label:'⚡ Hampir Habis'},
+            {id:'CLAIM', label:'🛠️ Klaim'},
+            {id:'UNCLAIMED', label:'⚪ Belum Klaim'},
+            {id:'EXPIRED', label:'😿 Expired'}
+          ].map(f => `<button type="button" data-pfilter="${f.id}" class="px-3 py-1.5 rounded-full text-[11px] font-black border cursor-pointer transition ${pantauFilter === f.id ? 'bg-[#4A2036] text-white border-[#4A2036]' : 'bg-white text-[#6D3B53] border-[#F5B8CE] hover:bg-[#FFE0EC]'}">${f.label}</button>`).join('')}
+        </div>
+
+        <div class="space-y-3">${rowsHtml}</div>
+      </div>
+    `;
+
+    const ps = document.getElementById('pantauSearchInp');
+    if (ps) ps.addEventListener('input', (e) => { pantauQuery = e.target.value.toLowerCase().trim(); renderPantauPanel(); });
+    el.querySelectorAll('[data-pfilter]').forEach(b => b.addEventListener('click', () => { pantauFilter = b.getAttribute('data-pfilter'); renderPantauPanel(); }));
+
+    // Wire 1-click stamp buttons directly inside Pantau!
+    el.querySelectorAll('[data-p-stamp]').forEach(b => b.addEventListener('click', async () => {
+      const id = b.getAttribute('data-p-stamp');
+      const val = b.getAttribute('data-val');
+      if (typeof adminActionSetWarrantyStamp === 'function') {
+        await adminActionSetWarrantyStamp(id, val);
+        setTimeout(renderPantauPanel, 450);
+      }
+    }));
+
+    // Wire 1-click duration setter directly inside Pantau!
+    el.querySelectorAll('[data-p-setdur]').forEach(b => b.addEventListener('click', async () => {
+      const id = b.getAttribute('data-p-setdur');
+      const sel = el.querySelector(`select[data-p-days="${id}"]`);
+      const days = Number(sel ? sel.value : 30);
+      if (typeof adminActionSetDurationDays === 'function') {
+        await adminActionSetDurationDays(id, days);
+        setTimeout(renderPantauPanel, 450);
+      }
+    }));
+  }
+
+  // ===== TAB 3: EKONOMI OTOMATIS (SHOPEEPAY 0% MDR + QRIS H+1 + OPSIONAL INPUT MANUAL) =====
+  function getTodayWibKey() {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    } catch (e) { return new Date().toISOString().slice(0, 10); }
+  }
+  function getOrderWibDateKey(o) {
+    const raw = o.paid_at || o.created_at;
+    if (!raw) return '';
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(raw));
+    } catch (e) { return String(raw).slice(0, 10); }
+  }
+  function loadQrisSettledMap() {
+    try { return JSON.parse(localStorage.getItem('archie_qris_settled_dates') || '{}'); } catch (e) { return {}; }
+  }
+  function saveQrisSettledMap(map) {
+    try { localStorage.setItem('archie_qris_settled_dates', JSON.stringify(map)); } catch (e) {}
+  }
+  function isEkonomiManualMode() {
+    try { return localStorage.getItem('archie_ekonomi_manual_mode') === '1'; } catch (e) { return false; }
+  }
+  function setEkonomiManualMode(flag) {
+    try { localStorage.setItem('archie_ekonomi_manual_mode', flag ? '1' : '0'); } catch (e) {}
+  }
+  function loadManualNeeds() {
+    try { return JSON.parse(localStorage.getItem('archie_ekonomi_needs_v2') || '{}'); } catch (e) { return {}; }
+  }
+  function saveManualNeeds(obj) {
+    try { localStorage.setItem('archie_ekonomi_needs_v2', JSON.stringify(obj)); } catch (e) {}
+  }
+  function computeAutoMilestone(collected, baseStep, minTarget) {
+    if (collected <= 0) return minTarget;
+    const next = Math.ceil((collected * 1.25) / baseStep) * baseStep;
+    return Math.max(minTarget, next);
+  }
+  function resolveOrderFhCostAuto(o) {
+    if (Number(o.fh_cost) > 0) return Number(o.fh_cost);
+    const cms = (window.ArchieLiveCms && window.ArchieLiveCms.current) ? window.ArchieLiveCms.current : (window.ARCHIE_DEFAULT_CMS || {});
+    const cat = Array.isArray(cms.catalog) ? cms.catalog : [];
+    const pname = String(o.product_name || '').toLowerCase();
+    const matched = cat.find(p => p && p.name && pname.includes(String(p.name).toLowerCase().split(' ')[0]));
+    if (matched && Number(matched.fhCost) > 0) return Number(matched.fhCost);
+    return Math.round((Number(o.final_price) || 0) * 0.55);
+  }
+
+  function renderEconomyPanel() {
+    const el = document.getElementById('wsPanel_economy');
+    if (!el) return;
+    const orders = getOrdersSafe();
+    const paid = orders.filter(o => String(o.status || '').toUpperCase() === 'PAID');
+
+    const todayKey = getTodayWibKey();
+    const settledMap = loadQrisSettledMap();
+    const isTodayMerged = Boolean(settledMap[todayKey]);
+    const manualMode = isEkonomiManualMode();
+
+    const todayOrders = paid.filter(o => getOrderWibDateKey(o) === todayKey);
+    const pastOrders = paid.filter(o => getOrderWibDateKey(o) !== todayKey);
+
+    const todayQrisTotal = todayOrders.reduce((s, o) => s + (Number(o.final_price) || 0), 0);
+    const pastQrisTotal = pastOrders.reduce((s, o) => s + (Number(o.final_price) || 0), 0);
+    const grandOmzet = todayQrisTotal + pastQrisTotal;
+
+    const activePaid = isTodayMerged ? paid : pastOrders;
+    const activeOmzet = activePaid.reduce((s, o) => s + (Number(o.final_price) || 0), 0);
+    const modalFh = activePaid.reduce((s, o) => s + resolveOrderFhCostAuto(o), 0);
+    // ShopeePay QRIS = 0% MDR (tanpa potongan biaya admin!)
+    const grossProfit = Math.max(0, activeOmzet - modalFh);
+    const cadanganGaransi = Math.round(grossProfit * 0.15);
+    const operasional = Math.round(grossProfit * 0.10);
+    const profitMimin = Math.max(0, grossProfit - cadanganGaransi - operasional);
+    const wipeImpact = Math.round(modalFh * (stressPct / 100));
+    const safeAfterWipe = cadanganGaransi >= wipeImpact;
+
+    // Auto-calculated smart targets (zero user math needed!) with optional manual override
+    const autoNeeds = {
+      modalFh: computeAutoMilestone(modalFh, 100000, 300000),
+      garansi: computeAutoMilestone(cadanganGaransi, 50000, 100000),
+      operasional: computeAutoMilestone(operasional, 50000, 100000),
+      profit: computeAutoMilestone(profitMimin, 100000, 500000)
+    };
+    const savedManual = loadManualNeeds();
+    const activeNeeds = manualMode
+      ? {
+          modalFh: Math.max(10000, Number(savedManual.modalFh) || autoNeeds.modalFh),
+          garansi: Math.max(10000, Number(savedManual.garansi) || autoNeeds.garansi),
+          operasional: Math.max(10000, Number(savedManual.operasional) || autoNeeds.operasional),
+          profit: Math.max(10000, Number(savedManual.profit) || autoNeeds.profit)
+        }
+      : autoNeeds;
+
+    const catRows = [
+      { key: 'modalFh', icon: '📦', title: 'Modal Putar FH', desc: 'Dihitung otomatis dari modal katalog FH tiap order.', collected: modalFh, target: activeNeeds.modalFh, bar: 'bg-[#4A2036]', border: 'border-[#F5B8CE]', text: 'text-[#4A2036]' },
+      { key: 'garansi', icon: '🛡️', title: 'Cadangan Garansi (15%)', desc: 'Otomatis disisihkan 15% profit untuk dana ganti akun.', collected: cadanganGaransi, target: activeNeeds.garansi, bar: 'bg-amber-400', border: 'border-amber-200', text: 'text-amber-800' },
+      { key: 'operasional', icon: '⚡', title: 'Operasional Toko (10%)', desc: 'Otomatis disisihkan 10% profit untuk kuota & kebutuhan toko.', collected: operasional, target: activeNeeds.operasional, bar: 'bg-sky-400', border: 'border-sky-200', text: 'text-sky-800' },
+      { key: 'profit', icon: '💖', title: 'Profit Bersih Mimin (75%)', desc: '100% bersih milik Mimin (ShopeePay 0% MDR!).', collected: profitMimin, target: activeNeeds.profit, bar: 'bg-gradient-to-r from-[#D83162] to-[#FF5C8A]', border: 'border-[#D83162]', text: 'text-[#D83162]' }
+    ];
+
+    const totalNeedAll = catRows.reduce((s, c) => s + c.target, 0);
+    const overallPct = Math.min(100, Math.round((activeOmzet / Math.max(1, totalNeedAll)) * 100));
+    const cms = (window.ArchieLiveCms && window.ArchieLiveCms.current) ? window.ArchieLiveCms.current : {};
+    const cmsAdminUi = (cms && cms.adminUi) ? cms.adminUi : {};
+    const ekonomiHeading = cmsAdminUi.ekonomiTitle || 'Ekonomi &amp; Celengan Otomatis Archie';
+
+    el.innerHTML = `
+      <div class="sparxie-glass-panel rounded-[28px] p-5 space-y-5">
+        <div class="rounded-[24px] bg-gradient-to-br from-[#FFF0F6] via-white to-[#FFE4F0] border-2 border-[#FF85A9] p-4 sm:p-5 space-y-3.5 shadow-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <span class="px-2.5 py-0.5 rounded-full bg-[#D83162] text-white text-[10px] font-black uppercase tracking-wider">🛍️ SHOPEEPAY QRIS • 0% MDR</span>
+              <h2 class="text-base sm:text-lg font-black text-[#4A2036] mt-1">${ekonomiHeading}</h2>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <button id="toggleEkonomiAutoManualBtn" type="button" class="px-3 py-1.5 rounded-full text-[11px] font-black transition cursor-pointer ${manualMode ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-emerald-100 text-emerald-800 border border-emerald-300'}">
+                ${manualMode ? '✏️ Mode Manual (Klik untuk Otomatis)' : '🤖 Mode Otomatis Aktif (Ubah Manual?)'}
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="rounded-2xl bg-white border-2 border-amber-300 p-3.5 space-y-2 flex flex-col justify-between">
+              <div>
+                <div class="text-[10.5px] font-black text-amber-800 uppercase">⏳ QRIS Masuk Hari Ini (Cair Besok)</div>
+                <div class="text-xl font-black text-amber-700 mt-0.5">${rp(todayQrisTotal)}</div>
+                <div class="text-[10px] font-bold text-[#7A4961]">${todayOrders.length} transaksi lunas hari ini (${todayKey})</div>
+              </div>
+              <button id="toggleMergeTodayQrisBtn" type="button" class="w-full py-2 px-3 rounded-xl text-[10.5px] font-black transition cursor-pointer ${isTodayMerged ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-[#D83162] hover:bg-[#b8224f] text-white shadow-sm'}">
+                ${isTodayMerged ? '✅ Sudah Dicairkan &amp; Digabung (Pisahkan)' : '💸 Cairkan &amp; Gabung ke Kalkulasi'}
+              </button>
+            </div>
+
+            <div class="rounded-2xl bg-white border-2 border-emerald-300 p-3.5 space-y-1">
+              <div class="text-[10.5px] font-black text-emerald-800 uppercase">💰 Saldo Cair (Aktif di Kalkulasi)</div>
+              <div class="text-xl font-black text-emerald-700 mt-0.5">${rp(activeOmzet)}</div>
+              <div class="text-[10px] font-bold text-[#7A4961]">${activePaid.length} order cair ${isTodayMerged ? '(termasuk hari ini)' : '(H-1 &amp; sebelumnya otomatis cair)'}</div>
+            </div>
+
+            <div class="rounded-2xl bg-white border-2 border-[#F5B8CE] p-3.5 space-y-1">
+              <div class="text-[10.5px] font-black text-[#8E2452] uppercase">📊 Total Omzet Keseluruhan</div>
+              <div class="text-xl font-black text-[#D83162] mt-0.5">${rp(grandOmzet)}</div>
+              <div class="text-[10px] font-bold text-[#7A4961]">${paid.length} total order lunas • 0% biaya admin</div>
+            </div>
+          </div>
+
+          <div class="space-y-1 pt-1">
+            <div class="flex items-center justify-between text-[11px] font-black text-[#4A2036]">
+              <span>🎯 Progress Total Semua Kebutuhan (${manualMode ? 'Target Manual' : 'Target Otomatis'})</span>
+              <span class="text-[#D83162]">${rp(activeOmzet)} / ${rp(totalNeedAll)} (${overallPct}%)</span>
+            </div>
+            <div class="w-full h-3.5 rounded-full bg-white overflow-hidden border border-[#F5B8CE] p-0.5">
+              <div style="width:${overallPct}%" class="h-full rounded-full bg-gradient-to-r from-[#FF7AA2] via-[#D83162] to-[#FF5C8A] transition-all duration-500"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="text-sm font-black text-[#4A2036]">📈 Line Progress Kebutuhan Tiap Kategori</h3>
+            <span class="text-[11px] font-bold text-[#7A4961]">${manualMode ? 'Ketik target manual di kotak Rp di tiap kartu.' : 'Semua angka &amp; target dihitung otomatis — tinggal pantau saja!'}</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+            ${catRows.map(c => {
+              const pct = Math.min(100, Math.round((c.collected / Math.max(1, c.target)) * 100));
+              const diff = c.target - c.collected;
+              const statusTxt = diff <= 0
+                ? `<span class="text-emerald-700 font-black">✅ Tercapai! (+${rp(Math.abs(diff))})</span>`
+                : `<span class="text-[#8E2452] font-bold">Kurang ${rp(diff)} lagi</span>`;
+              return `
+                <div class="rounded-2xl bg-white border-2 ${c.border} p-4 space-y-2.5 shadow-xs">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs font-black ${c.text}">${c.icon} ${c.title}</span>
+                    <span class="px-2 py-0.5 rounded-full bg-[#FFF0F6] text-[11px] font-black ${c.text}">${pct}%</span>
+                  </div>
+                  <div class="flex flex-wrap items-baseline justify-between gap-2">
+                    <div class="text-lg font-black ${c.text}">${rp(c.collected)}</div>
+                    ${manualMode
+                      ? `<label class="flex items-center gap-1 text-[10.5px] font-bold text-[#7A4961]"><span>Target Rp</span><input type="number" min="10000" step="50000" data-need-key="${c.key}" value="${c.target}" class="w-24 px-2 py-0.5 rounded-lg border border-[#F5B8CE] bg-[#FFF8FA] text-[11px] font-black text-[#4A2036] focus:outline-none focus:border-[#D83162]" /></label>`
+                      : `<span class="text-[10.5px] font-extrabold text-[#7A4961]">Target Auto: <strong class="text-[#4A2036]">${rp(c.target)}</strong></span>`}
+                  </div>
+                  <div class="w-full h-3 rounded-full bg-[#FFF0F6] overflow-hidden border border-[#F5C6D8]">
+                    <div style="width:${pct}%" class="h-full ${c.bar} rounded-full transition-all duration-500"></div>
+                  </div>
+                  <div class="flex flex-wrap items-center justify-between gap-1 text-[10.5px]">
+                    <span class="text-[#7A4961] font-semibold">${c.desc}</span>
+                    ${statusTxt}
                   </div>
                 </div>
               `;
-            }).join('')
-        }
+            }).join('')}
+          </div>
+        </div>
+
+        <div class="rounded-2xl bg-white/95 border border-[#F5B8CE] p-4 space-y-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="text-xs font-black text-[#4A2036]">🧪 Simulasi Kalau ${stressPct}% Akun Tumbang Sekaligus</div>
+            <span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-black ${safeAfterWipe ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}">
+              ${safeAfterWipe ? '✅ Celengan Garansi Kuat!' : '⚠️ Cadangan Belum Cukup'}
+            </span>
+          </div>
+          <input id="sparxieStressSlider" type="range" min="5" max="50" step="5" value="${stressPct}" class="w-full accent-[#D83162] cursor-pointer" />
+          <div class="flex flex-wrap justify-between text-[11px] font-bold text-[#6D3B53]">
+            <span>Estimasi Biaya Refill: <strong class="text-[#D83162]">${rp(wipeImpact)}</strong></span>
+            <span>Sisa Cadangan: <strong class="${safeAfterWipe ? 'text-emerald-700' : 'text-rose-600'}">${rp(cadanganGaransi - wipeImpact)}</strong></span>
+          </div>
+        </div>
       </div>
     `;
 
-    const toggleShot = () => {
-      cleanScreenshotMode = !cleanScreenshotMode;
-      document.getElementById('archieSaasRoot').classList.toggle('clean-shot-active', cleanScreenshotMode);
-      renderLoveArea();
-    };
-    const btn = document.getElementById('toggleCleanShotBtn');
-    if (btn) btn.addEventListener('click', toggleShot);
-    const exitBtn = document.getElementById('exitCleanShotFloating');
-    if (exitBtn) exitBtn.addEventListener('click', toggleShot);
-
-    sec.querySelectorAll('[data-export-love]').forEach((b) => {
-      b.addEventListener('click', async () => {
-        const card = document.getElementById('loveCard_' + b.getAttribute('data-export-love'));
-        if (!card || !window.html2canvas) return;
-        b.style.visibility = 'hidden';
-        const canvas = await window.html2canvas(card, { scale: 2, backgroundColor: '#FFF5F8' });
-        b.style.visibility = 'visible';
-        const a = document.createElement('a');
-        a.download = 'testimoni-archiepelago.png';
-        a.href = canvas.toDataURL('image/png');
-        a.click();
+    const modeBtn = document.getElementById('toggleEkonomiAutoManualBtn');
+    if (modeBtn) {
+      modeBtn.addEventListener('click', () => {
+        setEkonomiManualMode(!isEkonomiManualMode());
+        renderEconomyPanel();
+      });
+    }
+    const mergeBtn = document.getElementById('toggleMergeTodayQrisBtn');
+    if (mergeBtn) {
+      mergeBtn.addEventListener('click', () => {
+        const m = loadQrisSettledMap();
+        m[todayKey] = !m[todayKey];
+        saveQrisSettledMap(m);
+        renderEconomyPanel();
+      });
+    }
+    el.querySelectorAll('[data-need-key]').forEach(inp => {
+      inp.addEventListener('change', () => {
+        const k = inp.getAttribute('data-need-key');
+        const cur = loadManualNeeds();
+        cur[k] = Math.max(10000, Number(inp.value) || 100000);
+        saveManualNeeds(cur);
+        renderEconomyPanel();
       });
     });
+    const sl = document.getElementById('sparxieStressSlider');
+    if (sl) {
+      sl.addEventListener('input', (e) => {
+        stressPct = Number(e.target.value) || 15;
+        renderEconomyPanel();
+      });
+    }
   }
 
-  function renderSettingsArea() {
-    const sec = document.getElementById('area_settings');
-    sec.innerHTML = `
-      <div>
-        <h1 class="text-xl sm:text-2xl font-extrabold text-[#4A2036]">⚙️ Pengaturan Cepat & Full Live CMS</h1>
-        <p class="text-xs text-[#6D3B53]">Edit katalog, harga, T.O.S, dan semua teks website secara langsung melalui Editor CMS.</p>
+  // ===== TAB 4: COMMAND CENTER FH =====
+  function renderFhPanel() {
+    const el = document.getElementById('wsPanel_fh');
+    if (!el) return;
+    const orders = getOrdersSafe();
+    const cms = (window.ArchieLiveCms && window.ArchieLiveCms.current)
+      ? window.ArchieLiveCms.current
+      : (window.ARCHIE_DEFAULT_CMS || {});
+    const fhList = (cms.adminUi && Array.isArray(cms.adminUi.fhDirectory) && cms.adminUi.fhDirectory.length > 0)
+      ? cms.adminUi.fhDirectory
+      : [{ name: 'FH Utama', contact: '', specialty: 'Netflix, Spotify, Canva, Disney+', note: 'Tambahkan daftar FH lengkap lewat Web Editor → Tab Web Admin' }];
+
+    const cards = fhList.map(fh => {
+      const fhName = fh.name || 'FH';
+      const relOrders = orders.filter(o => String(o.fh_name || '').toLowerCase() === fhName.toLowerCase());
+      const claims = relOrders.filter(o => String(o.claim_status || '').toUpperCase() === 'IN_CLAIM').length;
+      const waDigits = String(fh.contact || '').replace(/[^0-9]/g, '');
+      const waHref = waDigits ? `https://wa.me/${waDigits}` : '';
+      return `
+        <div class="rounded-2xl bg-white border-2 border-[#F5B8CE] p-4 space-y-2 shadow-sm">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <h3 class="text-sm font-black text-[#4A2036]">🤝 ${esc(fhName)}</h3>
+              <p class="text-[11px] font-bold text-[#7A4961]">${esc(fh.specialty || 'Supplier Aplikasi Premium')}</p>
+            </div>
+            <span class="px-2.5 py-0.5 rounded-full bg-[#FFE0EC] text-[#D83162] text-[10px] font-black">
+              ${relOrders.length} Order • ${claims} Klaim
+            </span>
+          </div>
+          ${fh.note ? `<p class="text-[11px] text-[#6D3B53] bg-[#FFF5F8] px-3 py-2 rounded-xl border border-[#FFE0EC]">${esc(fh.note)}</p>` : ''}
+          <div class="flex items-center justify-end gap-2 pt-1">
+            ${waHref ? `<a href="${waHref}" target="_blank" class="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-black transition">💬 Chat WA FH ↗</a>` : '<span class="text-[10.5px] font-bold text-[#9A637B]">Atur nomor WA di Web Editor</span>'}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="sparxie-glass-panel rounded-[28px] p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span class="px-2.5 py-0.5 rounded-full bg-[#FFE0EC] text-[#D83162] text-[10px] font-black uppercase tracking-wider">🤝 SUPPLIER &amp; FIRST HAND</span>
+            <h2 class="text-base sm:text-lg font-black text-[#4A2036] mt-1">Command Center FH &amp; Performa</h2>
+          </div>
+          <a href="/editor" class="px-3.5 py-2 rounded-2xl sweet-btn text-xs font-black">✏️ Kelola Daftar FH di Editor ↗</a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">${cards}</div>
       </div>
+    `;
+  }
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-6 shadow-sm space-y-3">
-          <div class="text-2xl">✏️</div>
-          <h3 class="text-base font-extrabold text-[#4A2036]">Full Live CMS Editor (Editor.html)</h3>
-          <p class="text-xs text-[#6D3B53]">Kelola semua aplikasi, plan, durasi harga, T.O.S Store & per aplikasi, nomor WA checkout, teks Portal Garansi, dan direktori FH.</p>
-          <a href="/editor" class="inline-block px-5 py-3 rounded-2xl bg-gradient-to-r from-[#D83162] to-[#FF5C8A] text-white text-xs font-extrabold shadow-md">Buka Live CMS Editor ↗</a>
+  // ===== TAB 5: WALL OF LOVE (AFTER PAYMENT vs AFTER SERVICE + HH:mm:ss, ZERO "VERIFIED") =====
+  function renderLovePanel() {
+    const el = document.getElementById('wsPanel_love');
+    if (!el) return;
+    const orders = getOrdersSafe();
+
+    const items = [];
+    orders.forEach(o => {
+      const raw = String(o.feedback || o.feedback_text || '').trim();
+      if (!raw || raw.startsWith('[SURPRISE]:')) return;
+      const mGar = raw.match(/^\[GARANSI_TESTI\|([^\]]+)\]\s*(.*)$/s);
+      const mCust = raw.match(/^\[CUST_TESTI\|([^\]]+)\]\s*(.*)$/s);
+      let cat = 'AFTER_PAYMENT';
+      let tsIso = o.updated_at || o.created_at;
+      let cleanMsg = raw;
+      if (mGar) {
+        cat = 'AFTER_SERVICE';
+        tsIso = mGar[1];
+        cleanMsg = mGar[2].trim();
+      } else if (mCust) {
+        cat = 'AFTER_PAYMENT';
+        tsIso = mCust[1];
+        cleanMsg = mCust[2].trim();
+      } else if (Number(o.rating) > 0) {
+        cat = 'AFTER_SERVICE';
+      }
+      if (cleanMsg) items.push({ o, cat, tsIso, cleanMsg });
+    });
+
+    const filtered = items.filter(it => loveCategory === 'ALL' || it.cat === loveCategory);
+    const cntPay = items.filter(it => it.cat === 'AFTER_PAYMENT').length;
+    const cntSvc = items.filter(it => it.cat === 'AFTER_SERVICE').length;
+
+    const cards = filtered.length === 0
+      ? `<div class="rounded-3xl bg-white/90 border-2 border-dashed border-[#F5B8CE] p-8 text-center space-y-2">
+           <div class="text-3xl">💌</div>
+           <div class="text-sm font-black text-[#4A2036]">Belum ada testimoni di kategori ini</div>
+           <p class="text-xs font-semibold text-[#7A4961]">Testimoni dari Web Customer masuk ke <strong>After Payment</strong>, sedangkan dari Web Garansi masuk ke <strong>After Service</strong>.</p>
+         </div>`
+      : `<div class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+          ${filtered.map(it => {
+            const o = it.o;
+            const stars = '⭐'.repeat(Math.max(1, Math.min(5, Number(o.rating) || 5)));
+            const code = (typeof formatOrderCode === 'function') ? formatOrderCode(o.id, o) : (o.order_code || o.id);
+            const catPill = it.cat === 'AFTER_SERVICE'
+              ? '<span class="px-2.5 py-0.5 rounded-full bg-[#FFE0EC] text-[#D83162] text-[10px] font-black">🎟️ After Service</span>'
+              : '<span class="px-2.5 py-0.5 rounded-full bg-[#E8F5FE] text-[#0369A1] text-[10px] font-black">💳 After Payment</span>';
+            return `
+              <div class="rounded-[26px] bg-gradient-to-br from-white via-[#FFF9FB] to-[#FFEAF2] border-2 border-[#F5B8CE] p-4 shadow-md space-y-2.5">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <span class="w-8 h-8 rounded-full bg-[#FFE0EC] flex items-center justify-center text-sm">🐰</span>
+                    <div>
+                      <div class="text-xs font-black text-[#4A2036]">${esc(o.initials || 'Customer Archie')}</div>
+                      <div class="text-[10px] font-bold text-[#9A637B]">${esc(o.product_name || 'App Premium')} • ${esc(code)}</div>
+                    </div>
+                  </div>
+                  <span class="text-xs">${stars}</span>
+                </div>
+                <blockquote class="text-xs sm:text-sm font-bold text-[#4A2036] bg-white/85 rounded-2xl p-3 border border-[#FCD2E3] leading-relaxed">
+                  “${esc(it.cleanMsg)}”
+                </blockquote>
+                <div class="flex flex-wrap items-center justify-between gap-1.5">
+                  ${catPill}
+                  <span class="text-[10px] font-extrabold tabular-nums text-[#7A4961]">🕒 ${formatFullWib(it.tsIso)}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>`;
+
+    el.innerHTML = `
+      <div class="sparxie-glass-panel rounded-[28px] p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span class="px-2.5 py-0.5 rounded-full bg-[#FFE0EC] text-[#D83162] text-[10px] font-black uppercase tracking-wider">💌 TESTIMONI CUSTOMER</span>
+            <h2 class="text-base sm:text-lg font-black text-[#4A2036] mt-1">Wall of Love — Archie'pelago (${filtered.length})</h2>
+          </div>
+          <button id="toggleCleanShotBtn" type="button" class="px-3.5 py-2 rounded-2xl ${cleanShot ? 'bg-[#4A2036] text-[#FFE066]' : 'sweet-btn'} text-xs font-black cursor-pointer">
+            ${cleanShot ? '🔙 Keluar Mode Clean SS' : '📸 Mode Clean Shot (SS)'}
+          </button>
         </div>
 
-        <div class="bg-white border-2 border-[#FCD2E3] rounded-3xl p-6 shadow-sm space-y-3">
-          <div class="text-2xl">💾</div>
-          <h3 class="text-base font-extrabold text-[#4A2036]">Local JSON Backup</h3>
-          <p class="text-xs text-[#6D3B53]">Unduh cadangan penuh seluruh data pesanan live, slot akun induk, dan konfigurasi CMS ke perangkatmu.</p>
-          <button id="downloadJsonBackupBtn" class="px-5 py-3 rounded-2xl bg-[#4A2036] text-white text-xs font-extrabold">📥 Unduh Backup JSON</button>
+        <div class="hide-on-clean-shot flex flex-wrap gap-1.5">
+          <button type="button" data-lovecat="ALL" class="px-3.5 py-1.5 rounded-full text-xs font-black border cursor-pointer ${loveCategory==='ALL' ? 'bg-[#4A2036] text-white border-[#4A2036]' : 'bg-white text-[#6D3B53] border-[#F5B8CE]'}">Semua (${items.length})</button>
+          <button type="button" data-lovecat="AFTER_PAYMENT" class="px-3.5 py-1.5 rounded-full text-xs font-black border cursor-pointer ${loveCategory==='AFTER_PAYMENT' ? 'bg-[#0369A1] text-white border-[#0369A1]' : 'bg-white text-[#0369A1] border-sky-200'}">💳 After Payment (${cntPay})</button>
+          <button type="button" data-lovecat="AFTER_SERVICE" class="px-3.5 py-1.5 rounded-full text-xs font-black border cursor-pointer ${loveCategory==='AFTER_SERVICE' ? 'bg-[#D83162] text-white border-[#D83162]' : 'bg-white text-[#D83162] border-[#F5B8CE]'}">🎟️ After Service (${cntSvc})</button>
         </div>
+
+        ${cards}
       </div>
     `;
 
-    document.getElementById('downloadJsonBackupBtn').addEventListener('click', () => {
-      const payload = {
-        exported_at: new Date().toISOString(),
-        orders: liveOrders,
-        master_slots: masterSlots,
-        store_credits: storeCredits,
-        cms_config: liveCms
-      };
-      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'archiepelago_backup_' + new Date().toISOString().slice(0, 10) + '.json';
-      a.click();
-      showAdminToast('File backup JSON berhasil diunduh.');
-    });
+    el.querySelectorAll('[data-lovecat]').forEach(b => b.addEventListener('click', () => {
+      loveCategory = b.getAttribute('data-lovecat');
+      renderLovePanel();
+    }));
+    const csBtn = document.getElementById('toggleCleanShotBtn');
+    if (csBtn) {
+      csBtn.addEventListener('click', () => {
+        cleanShot = !cleanShot;
+        document.body.classList.toggle('clean-shot-mode', cleanShot);
+        renderLovePanel();
+      });
+    }
   }
 
-  async function bootAdminProd() {
-    loadLocalAdminData();
-    const sb = getSb();
-    if (!sb) return;
-
-    const mountWhenAuthed = async () => {
-      const { data } = await sb.auth.getSession();
-      if (data && data.session) {
-        const authOv = document.getElementById('adminAuthOverlay');
-        if (authOv) authOv.style.display = 'none';
-        mountSaasShell();
-        await fetchAllLiveData(false);
-      }
-    };
-
-    await mountWhenAuthed();
-    sb.auth.onAuthStateChange((_ev, session) => {
-      if (session) {
-        const authOv = document.getElementById('adminAuthOverlay');
-        if (authOv) authOv.style.display = 'none';
-        mountSaasShell();
-        fetchAllLiveData(false);
-      }
+  function switchWorkspace(ws) {
+    currentWs = ws;
+    navWrap.querySelectorAll('.sparxie-workspace-tab').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-ws') === ws);
     });
+    if (ws === 'orders') {
+      originalSections.forEach(s => { if (s.id !== 'surpriseDrawerSection') s.style.display = ''; });
+      extraPanelsWrap.classList.add('hidden');
+      document.body.classList.remove('clean-shot-mode');
+      cleanShot = false;
+    } else {
+      originalSections.forEach(s => { s.style.display = 'none'; });
+      extraPanelsWrap.classList.remove('hidden');
+      ['pantau', 'economy', 'fh', 'love'].forEach(k => {
+        const p = document.getElementById('wsPanel_' + k);
+        if (p) p.classList.toggle('hidden', k !== ws);
+      });
+      if (ws === 'pantau') renderPantauPanel();
+      if (ws === 'economy') renderEconomyPanel();
+      if (ws === 'fh') renderFhPanel();
+      if (ws === 'love') renderLovePanel();
+    }
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', bootAdminProd);
-  } else {
-    bootAdminProd();
+  navWrap.querySelectorAll('.sparxie-workspace-tab').forEach(b => {
+    b.addEventListener('click', () => switchWorkspace(b.getAttribute('data-ws')));
+  });
+
+  const refreshBtn = document.getElementById('refreshOrdersBtn');
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', () => {
+      setTimeout(() => {
+        if (currentWs === 'pantau') renderPantauPanel();
+        if (currentWs === 'economy') renderEconomyPanel();
+        if (currentWs === 'fh') renderFhPanel();
+        if (currentWs === 'love') renderLovePanel();
+      }, 600);
+    });
   }
 })();
-
 </script>
 </body>
 </html>
