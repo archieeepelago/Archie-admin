@@ -3927,6 +3927,9 @@ create policy "Allow public read/write orders" on public.orders
       <button type="button" data-ws="economy" class="sparxie-workspace-tab px-3.5 py-2 rounded-2xl text-xs font-black bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE] cursor-pointer">
         🍓 Ekonomi &amp; Celengan
       </button>
+      <button type="button" data-ws="orderfin" class="sparxie-workspace-tab px-3.5 py-2 rounded-2xl text-xs font-black bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE] cursor-pointer">
+        📊 Keuangan Per Order
+      </button>
       <button type="button" data-ws="fh" class="sparxie-workspace-tab px-3.5 py-2 rounded-2xl text-xs font-black bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE] cursor-pointer">
         🤝 Command Center FH
       </button>
@@ -3946,6 +3949,7 @@ create policy "Allow public read/write orders" on public.orders
   extraPanelsWrap.innerHTML = `
     <section id="wsPanel_pantau" class="hidden space-y-4"></section>
     <section id="wsPanel_economy" class="hidden space-y-4"></section>
+    <section id="wsPanel_orderfin" class="hidden space-y-4"></section>
     <section id="wsPanel_fh" class="hidden space-y-4"></section>
     <section id="wsPanel_love" class="hidden space-y-4"></section>
   `;
@@ -4543,6 +4547,246 @@ create policy "Allow public read/write orders" on public.orders
     }
   }
 
+  // ===== TAB BARU: KEUANGAN PER ORDER & KALKULATOR REKAP AKHIR HARI =====
+  let orderFinScope = 'TODAY'; // TODAY | ALL
+  let orderFinDate = getTodayWibKey();
+  let orderFinQuery = '';
+
+  function calcOrderFinancials(o) {
+    const finalPrice = Math.max(0, Number(o.final_price) || 0);
+    const basePrice = Math.max(finalPrice, Number(o.base_price) || finalPrice);
+    let discPct = Number(o.discount_pct || 0);
+    if (discPct <= 0 && basePrice > finalPrice) {
+      discPct = Number((((basePrice - finalPrice) / basePrice) * 100).toFixed(1));
+    }
+    const savedAmt = Number(o.saved_amount || 0) > 0 ? Number(o.saved_amount) : Math.max(0, basePrice - finalPrice);
+    const fhCost = resolveOrderFhCostAuto(o);
+    const profitBeforeGaransi = finalPrice - fhCost;
+    const garansiReserve = Math.max(0, Math.round(profitBeforeGaransi * 0.15));
+    const profitAfterGaransi = profitBeforeGaransi - garansiReserve;
+    const priceAfterGaransi = Math.max(0, finalPrice - garansiReserve);
+    const marginPct = finalPrice > 0 ? ((profitBeforeGaransi / finalPrice) * 100).toFixed(1) : '0.0';
+    const code = (typeof formatOrderCode === 'function') ? formatOrderCode(o.id, o) : (o.order_code || o.id);
+    const cleanPlan = (typeof parseWarrantyAndDurationFromOrder === 'function')
+      ? (parseWarrantyAndDurationFromOrder(o).cleanPlan || o.plan_label || '-')
+      : (o.plan_label || '-');
+    return {
+      o, code, cleanPlan, finalPrice, basePrice, discPct, savedAmt,
+      fhCost, profitBeforeGaransi, garansiReserve, profitAfterGaransi, priceAfterGaransi, marginPct,
+      dateKey: getOrderWibDateKey(o)
+    };
+  }
+
+  function fmtRpOrderFin(n) {
+    const v = Math.round(Number(n) || 0);
+    return (v < 0 ? '-Rp ' : 'Rp ') + Math.abs(v).toLocaleString('id-ID');
+  }
+
+  function renderOrderFinancePanel() {
+    const el = document.getElementById('wsPanel_orderfin');
+    if (!el) return;
+    const orders = getOrdersSafe();
+    const paidOrders = orders.filter(o => String(o.status || '').toUpperCase() === 'PAID');
+    const targetDate = orderFinDate || getTodayWibKey();
+
+    const scopedOrders = (orderFinScope === 'TODAY'
+      ? paidOrders.filter(o => getOrderWibDateKey(o) === targetDate)
+      : paidOrders
+    ).map(calcOrderFinancials);
+
+    const filteredList = scopedOrders.filter(item => {
+      if (!orderFinQuery) return true;
+      const hay = `${item.code} ${item.o.initials || ''} ${item.o.product_name || ''} ${item.cleanPlan}`.toLowerCase();
+      return hay.includes(orderFinQuery);
+    });
+
+    const count = scopedOrders.length;
+    const sumOmzet = scopedOrders.reduce((s, x) => s + x.finalPrice, 0);
+    const sumModal = scopedOrders.reduce((s, x) => s + x.fhCost, 0);
+    const sumProfit = scopedOrders.reduce((s, x) => s + x.profitBeforeGaransi, 0);
+    const sumGaransi = scopedOrders.reduce((s, x) => s + x.garansiReserve, 0);
+    const sumProfitAfter = scopedOrders.reduce((s, x) => s + x.profitAfterGaransi, 0);
+    const sumPriceAfterGaransi = scopedOrders.reduce((s, x) => s + x.priceAfterGaransi, 0);
+    const sumSaved = scopedOrders.reduce((s, x) => s + x.savedAmt, 0);
+    const avgDiscPct = count > 0
+      ? (scopedOrders.reduce((s, x) => s + x.discPct, 0) / count).toFixed(2)
+      : '0.00';
+
+    let highestItem = null;
+    let lowestItem = null;
+    scopedOrders.forEach(item => {
+      if (!highestItem || item.finalPrice > highestItem.finalPrice) highestItem = item;
+      if (!lowestItem || item.finalPrice < lowestItem.finalPrice) lowestItem = item;
+    });
+
+    const scopeLabel = orderFinScope === 'TODAY'
+      ? (targetDate === getTodayWibKey() ? 'Hari Ini (' + targetDate + ')' : 'Tanggal ' + targetDate)
+      : 'Semua Order Lunas';
+
+    const escH = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    const highlightHtml = count === 0
+      ? `<div class="p-4 rounded-2xl bg-[#FFF8FA] border border-dashed border-[#F5B8CE] text-center text-xs font-bold text-[#8C4A67]">Belum ada pesanan LUNAS pada periode <strong>${escH(scopeLabel)}</strong>. Coba ganti tanggal atau klik <strong>🌐 Semua Lunas</strong>.</div>`
+      : `
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div class="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50 to-white border-2 border-emerald-300 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-[10px] font-black uppercase tracking-wider text-emerald-700">🏆 Orderan Harga Tertinggi (${escH(scopeLabel)})</div>
+              <div class="text-sm font-black text-[#4A2036] truncate mt-0.5">${escH(highestItem.code)} • ${escH(highestItem.o.initials || 'Customer')}</div>
+              <div class="text-[11px] font-bold text-[#7A4961] truncate">${escH(highestItem.o.product_name || '-')} (${escH(highestItem.cleanPlan)})</div>
+              <div class="text-[10.5px] font-bold text-emerald-700 mt-1">Diskon ${highestItem.discPct}% • Profit stlh garansi: ${fmtRpOrderFin(highestItem.profitAfterGaransi)}</div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-lg font-black text-emerald-700">${fmtRpOrderFin(highestItem.finalPrice)}</div>
+              <div class="text-[10px] font-bold text-[#7A4961]">Stlh garansi: ${fmtRpOrderFin(highestItem.priceAfterGaransi)}</div>
+            </div>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-gradient-to-br from-amber-50 to-white border-2 border-amber-300 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="text-[10px] font-black uppercase tracking-wider text-amber-800">🌱 Orderan Harga Terendah (${escH(scopeLabel)})</div>
+              <div class="text-sm font-black text-[#4A2036] truncate mt-0.5">${escH(lowestItem.code)} • ${escH(lowestItem.o.initials || 'Customer')}</div>
+              <div class="text-[11px] font-bold text-[#7A4961] truncate">${escH(lowestItem.o.product_name || '-')} (${escH(lowestItem.cleanPlan)})</div>
+              <div class="text-[10.5px] font-bold text-amber-800 mt-1">Diskon ${lowestItem.discPct}% • Profit stlh garansi: ${fmtRpOrderFin(lowestItem.profitAfterGaransi)}</div>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-lg font-black text-amber-700">${fmtRpOrderFin(lowestItem.finalPrice)}</div>
+              <div class="text-[10px] font-bold text-[#7A4961]">Stlh garansi: ${fmtRpOrderFin(lowestItem.priceAfterGaransi)}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+    const rowsHtml = filteredList.length === 0
+      ? `<div class="p-6 rounded-2xl bg-white border border-dashed border-[#F5B8CE] text-center text-xs font-bold text-[#8C4A67]">Tidak ada orderan yang cocok dengan filter saat ini.</div>`
+      : filteredList.map(item => {
+          const isHi = highestItem && item.o.id === highestItem.o.id && count > 1;
+          const isLo = lowestItem && item.o.id === lowestItem.o.id && count > 1 && highestItem.o.id !== lowestItem.o.id;
+          const timeStr = item.o.paid_at || item.o.created_at
+            ? new Date(item.o.paid_at || item.o.created_at).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' WIB'
+            : '-';
+          return `
+            <div class="p-4 rounded-2xl bg-white border-2 ${isHi ? 'border-emerald-300' : (isLo ? 'border-amber-300' : 'border-[#F5B8CE]')} shadow-sm space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-dashed border-[#F7C6D9]">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <span class="px-2.5 py-0.5 rounded-lg bg-[#4A2036] text-[#FFE066] font-mono-code text-[11px] font-black">${escH(item.code)}</span>
+                  <span class="text-xs font-black text-[#4A2036]">${escH(item.o.initials || 'Customer')}</span>
+                  <span class="text-[11px] font-bold text-[#8C4A67]">• ${escH(item.o.product_name || '-')} (${escH(item.cleanPlan)})</span>
+                  ${isHi ? '<span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[9.5px] font-black">🏆 Tertinggi</span>' : ''}
+                  ${isLo ? '<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[9.5px] font-black">🌱 Terendah</span>' : ''}
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded-full bg-[#FFE0EC] text-[#D83162] text-[10px] font-black">🎰 Diskon ${item.discPct}% (-${fmtRpOrderFin(item.savedAmt)})</span>
+                  <span class="text-[10px] font-bold text-[#9A637B]">${escH(timeStr)}</span>
+                </div>
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
+                <div class="p-2.5 rounded-xl bg-[#FFF8FA] border border-[#F7C6D9]">
+                  <div class="text-[10px] font-bold text-[#7A4961]">💳 Harga Bayar</div>
+                  <div class="text-sm font-black text-[#4A2036] mt-0.5">${fmtRpOrderFin(item.finalPrice)}</div>
+                  <div class="text-[9.5px] text-[#9A637B]">Awal: ${fmtRpOrderFin(item.basePrice)}</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-[#FFF8FA] border border-[#F7C6D9]">
+                  <div class="text-[10px] font-bold text-[#7A4961]">📦 Modal FH</div>
+                  <div class="text-sm font-black text-[#4A2036] mt-0.5">${fmtRpOrderFin(item.fhCost)}</div>
+                  <div class="text-[9.5px] text-[#9A637B]">Modal supplier</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                  <div class="text-[10px] font-bold text-emerald-800">💰 Profit Didapat</div>
+                  <div class="text-sm font-black ${item.profitBeforeGaransi >= 0 ? 'text-emerald-700' : 'text-rose-600'} mt-0.5">${fmtRpOrderFin(item.profitBeforeGaransi)}</div>
+                  <div class="text-[9.5px] font-bold text-emerald-700">Margin ${item.marginPct}%</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-amber-50/80 border border-amber-200">
+                  <div class="text-[10px] font-bold text-amber-900">🛡️ Pot. Cad. Garansi</div>
+                  <div class="text-sm font-black text-amber-700 mt-0.5">-${fmtRpOrderFin(item.garansiReserve)}</div>
+                  <div class="text-[9.5px] font-bold text-amber-800/80">15% dari profit</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-fuchsia-50/90 border-2 border-[#F5B8CE]">
+                  <div class="text-[10px] font-extrabold text-[#9B2358]">💎 Profit Stlh Garansi</div>
+                  <div class="text-sm font-black text-[#D83162] mt-0.5">${fmtRpOrderFin(item.profitAfterGaransi)}</div>
+                  <div class="text-[9.5px] font-bold text-[#9B2358]">Bersih masuk kantong</div>
+                </div>
+                <div class="p-2.5 rounded-xl bg-sky-50/80 border border-sky-200">
+                  <div class="text-[10px] font-extrabold text-sky-900">💵 Harga Stlh Garansi</div>
+                  <div class="text-sm font-black text-sky-700 mt-0.5">${fmtRpOrderFin(item.priceAfterGaransi)}</div>
+                  <div class="text-[9.5px] font-bold text-sky-800/80">Bayar − Cad. Garansi</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+    el.innerHTML = `
+      <!-- KALKULATOR & REKAP AKHIR HARI -->
+      <div class="sweet-card rounded-[26px] p-4 sm:p-5 border-2 border-[#F5B8CE] bg-white space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-dashed border-[#F5B8CE]">
+          <div>
+            <span class="px-2.5 py-0.5 rounded-full bg-[#FFE0EC] text-[#D83162] text-[10px] font-black uppercase tracking-wider">🌙 KALKULATOR REKAP AKHIR HARI</span>
+            <h2 class="text-base sm:text-lg font-black text-[#4A2036] mt-1">Keuangan Per Order &amp; Ringkasan Akhir Hari</h2>
+            <p class="text-[11px] font-semibold text-[#7A4961]">Cek rata-rata diskon, total profit, cadangan garansi wajib simpan (15%), profit bersih setelah cadangan garansi, serta orderan tertinggi &amp; terendah.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button id="orderFinScopeTodayBtn" type="button" class="px-3 py-1.5 rounded-xl text-[11px] font-black transition cursor-pointer ${orderFinScope === 'TODAY' ? 'bg-[#D83162] text-white shadow-sm' : 'bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE]'}">📅 Per Tanggal (Akhir Hari)</button>
+            <button id="orderFinScopeAllBtn" type="button" class="px-3 py-1.5 rounded-xl text-[11px] font-black transition cursor-pointer ${orderFinScope === 'ALL' ? 'bg-[#D83162] text-white shadow-sm' : 'bg-[#FFF0F6] text-[#8E2452] border border-[#F5B8CE]'}">🌐 Semua Order Lunas</button>
+            <input id="orderFinDateInput" type="date" value="${escH(targetDate)}" class="px-2.5 py-1.5 rounded-xl bg-[#FFF8FA] border border-[#F5B8CE] text-[11px] font-black text-[#4A2036] ${orderFinScope === 'ALL' ? 'opacity-50' : ''}" />
+          </div>
+        </div>
+
+        <!-- 4 KARTU REKAP AKHIR HARI -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="p-3.5 rounded-2xl bg-[#FFF8FA] border-2 border-[#F5B8CE]">
+            <div class="text-[10.5px] font-extrabold text-[#7A4961]">🏷️ Rata-Rata Diskon (${count} Order)</div>
+            <div class="text-2xl font-black text-[#D83162] mt-1">${avgDiscPct}%</div>
+            <div class="text-[10.5px] font-bold text-[#8C4A67] mt-0.5">Total potongan: ${fmtRpOrderFin(sumSaved)}</div>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-emerald-50/80 border-2 border-emerald-200">
+            <div class="text-[10.5px] font-extrabold text-emerald-800">💰 Profit ${orderFinScope === 'TODAY' ? 'Hari Ini' : 'Total'}</div>
+            <div class="text-2xl font-black text-emerald-700 mt-1">${fmtRpOrderFin(sumProfit)}</div>
+            <div class="text-[10.5px] font-bold text-emerald-800/80 mt-0.5">Omzet ${fmtRpOrderFin(sumOmzet)} − Modal ${fmtRpOrderFin(sumModal)}</div>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-amber-50/80 border-2 border-amber-200">
+            <div class="text-[10.5px] font-extrabold text-amber-900">🛡️ Cadangan Garansi Disimpan</div>
+            <div class="text-2xl font-black text-amber-700 mt-1">${fmtRpOrderFin(sumGaransi)}</div>
+            <div class="text-[10.5px] font-bold text-amber-800/80 mt-0.5">15% profit wajib disisihkan</div>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-gradient-to-br from-[#FFF0F6] to-[#FFE0EC] border-2 border-[#D83162]">
+            <div class="text-[10.5px] font-black text-[#9B2358]">💎 Profit Stlh Cad. Garansi</div>
+            <div class="text-2xl font-black text-[#D83162] mt-1">${fmtRpOrderFin(sumProfitAfter)}</div>
+            <div class="text-[10.5px] font-bold text-[#6D3B53] mt-0.5">Total harga stlh garansi: ${fmtRpOrderFin(sumPriceAfterGaransi)}</div>
+          </div>
+        </div>
+
+        <!-- HIGHLIGHT HARGA TERTINGGI & TERENDAH -->
+        ${highlightHtml}
+      </div>
+
+      <!-- RINCIAN TIAP ORDERAN -->
+      <div class="sweet-card rounded-[26px] p-4 sm:p-5 border-2 border-[#F5B8CE] bg-white/95 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 class="text-sm font-black text-[#4A2036]">🧾 Rincian Keuangan Masing-Masing Order (${filteredList.length})</h3>
+            <p class="text-[11px] font-semibold text-[#7A4961]">Menampilkan profit, potongan cadangan garansi 15%, profit bersih, dan harga setelah potong cadangan garansi untuk tiap orderan.</p>
+          </div>
+          <input id="orderFinSearchInput" type="text" value="${escH(orderFinQuery)}" placeholder="Cari ARC-XXXX, nama, atau produk..." class="px-3 py-1.5 rounded-xl bg-[#FFF8FA] border border-[#F5B8CE] text-xs font-bold text-[#4A2036] focus:outline-none focus:border-[#D83162] w-full sm:w-64" />
+        </div>
+        <div class="space-y-2.5">${rowsHtml}</div>
+      </div>
+    `;
+
+    const btnToday = document.getElementById('orderFinScopeTodayBtn');
+    const btnAll = document.getElementById('orderFinScopeAllBtn');
+    const dateInp = document.getElementById('orderFinDateInput');
+    const searchInp = document.getElementById('orderFinSearchInput');
+    if (btnToday) btnToday.addEventListener('click', () => { orderFinScope = 'TODAY'; renderOrderFinancePanel(); });
+    if (btnAll) btnAll.addEventListener('click', () => { orderFinScope = 'ALL'; renderOrderFinancePanel(); });
+    if (dateInp) dateInp.addEventListener('change', () => { orderFinDate = dateInp.value || getTodayWibKey(); orderFinScope = 'TODAY'; renderOrderFinancePanel(); });
+    if (searchInp) searchInp.addEventListener('input', () => {
+      orderFinQuery = searchInp.value.trim().toLowerCase();
+      renderOrderFinancePanel();
+      const again = document.getElementById('orderFinSearchInput');
+      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
+    });
+  }
+
   function switchWorkspace(ws) {
     currentWs = ws;
     navWrap.querySelectorAll('.sparxie-workspace-tab').forEach(b => {
@@ -4556,12 +4800,13 @@ create policy "Allow public read/write orders" on public.orders
     } else {
       originalSections.forEach(s => { s.style.display = 'none'; });
       extraPanelsWrap.classList.remove('hidden');
-      ['pantau', 'economy', 'fh', 'love'].forEach(k => {
+      ['pantau', 'economy', 'orderfin', 'fh', 'love'].forEach(k => {
         const p = document.getElementById('wsPanel_' + k);
         if (p) p.classList.toggle('hidden', k !== ws);
       });
       if (ws === 'pantau') renderPantauPanel();
       if (ws === 'economy') renderEconomyPanel();
+      if (ws === 'orderfin') renderOrderFinancePanel();
       if (ws === 'fh') renderFhPanel();
       if (ws === 'love') renderLovePanel();
     }
@@ -4577,6 +4822,7 @@ create policy "Allow public read/write orders" on public.orders
       setTimeout(() => {
         if (currentWs === 'pantau') renderPantauPanel();
         if (currentWs === 'economy') renderEconomyPanel();
+        if (currentWs === 'orderfin') renderOrderFinancePanel();
         if (currentWs === 'fh') renderFhPanel();
         if (currentWs === 'love') renderLovePanel();
       }, 600);
