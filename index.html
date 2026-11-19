@@ -3308,6 +3308,27 @@ create policy "Allow public read/write orders" on public.orders
 
     const origBuildWa = buildCustomerWhatsAppTemplate;
     buildCustomerWhatsAppTemplate = function(order) {
+      const cms = (window.ArchieLiveCms && window.ArchieLiveCms.current)
+        ? window.ArchieLiveCms.current
+        : (window.ArchieLiveCms && typeof window.ArchieLiveCms.getCached === 'function' ? window.ArchieLiveCms.getCached() : null);
+      const customTpl = cms && cms.adminUi && typeof cms.adminUi.waHandoverTemplate === 'string' && cms.adminUi.waHandoverTemplate.trim();
+      if (customTpl && order) {
+        const wInfo = parseWarrantyAndDurationFromOrder(order);
+        const code = formatOrderCode(order.id, order);
+        const garUrlInput = document.getElementById('garansiWebUrlInput');
+        const baseGarUrl = (garUrlInput && garUrlInput.value.trim()) ? garUrlInput.value.trim() : window.location.origin;
+        const pinVal = order.access_pin || '-';
+        const expDateStr = wInfo.expiresAtMs ? new Date(wInfo.expiresAtMs).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+        return customTpl
+          .replace(/\{order_code\}/gi, code)
+          .replace(/\{customer_name\}/gi, order.initials || 'Kak Customer')
+          .replace(/\{product_name\}/gi, order.product_name || 'Aplikasi Premium')
+          .replace(/\{plan_label\}/gi, wInfo.cleanPlan || '1 Bulan')
+          .replace(/\{warranty_url\}/gi, baseGarUrl)
+          .replace(/\{pin\}/gi, pinVal)
+          .replace(/\{access_pin\}/gi, pinVal)
+          .replace(/\{exp_date\}/gi, expDateStr);
+      }
       let tpl = origBuildWa(order);
       if (order && order.access_pin && !tpl.includes(order.access_pin)) {
         tpl += `\n🔑 *Kata Sandi Tiket:* \`${order.access_pin}\``;
