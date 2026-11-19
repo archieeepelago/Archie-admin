@@ -2348,8 +2348,21 @@ create policy "Allow public read/write orders" on public.orders
             if (client) await client.from('orders').update({ plan_label: plan }).eq('id', ord.id);
             else await supabaseRestRequest(`orders?id=eq.${encodeURIComponent(ord.id)}`, { method: 'PATCH', body: JSON.stringify({ plan_label: plan }) });
             ord.plan_label = plan;
+            // Instant Supabase Realtime Broadcast -> Web Garansi updates in <150ms!
+            try {
+              const bCode = String((typeof formatOrderCode === 'function' ? formatOrderCode(ord.id, ord) : (ord.order_code || '')) || '').toUpperCase().trim();
+              if (client && bCode) {
+                const bCh = client.channel('archie-delivery-live-' + bCode);
+                bCh.subscribe((st) => {
+                  if (st === 'SUBSCRIBED') {
+                    bCh.send({ type: 'broadcast', event: 'order-updated', payload: { order_code: bCode, plan_label: plan, deliv_at: nowIso } })
+                      .finally(() => { setTimeout(() => { try { client.removeChannel(bCh); } catch (_) {} }, 1200); });
+                  }
+                });
+              }
+            } catch (_) {}
             renderOrdersList(true);
-            showAdminToast('📦 Waktu Resmi Pengiriman Archie tercatat & langsung tampil di Web Garansi!');
+            showAdminToast('📦 Waktu Resmi Pengiriman Archie tercatat & langsung tampil realtime di Web Garansi!');
           } catch (e) { showAdminToast('⚠️ Gagal mencatat waktu pengiriman.'); }
         });
       });
