@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=1120, user-scalable=yes, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Archie'pelago — Admin Command Center &amp; Kontrol Garansi</title>
   <!-- ========================================================================= -->
   <!-- LOGO TAB WEBSITE OTOMATIS (DEFAULT SPARXIE + OVERRIDE FILE GITHUB):       -->
@@ -187,7 +187,17 @@
     button, a, input, select, textarea { touch-action: manipulation; }
     article[data-arc-card] { touch-action: pan-y; }
     body { padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); }
-    @media (pointer: coarse) { body { min-width: 1120px; } }
+    /* Jalan tengah Mac-like compact UI di HP (dan otomatis full Mac UI saat Request Desktop Website di Safari!) */
+    @media (max-width: 767px) {
+      header > div { padding: 8px 12px !important; gap: 6px !important; }
+      header > div > div:last-child { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; width: 100%; padding-bottom: 2px; scrollbar-width: none; }
+      header > div > div:last-child::-webkit-scrollbar { display: none; }
+      header > div > div:last-child > * { flex-shrink: 0 !important; white-space: nowrap !important; }
+      #filterTabsContainer { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; padding-bottom: 2px; scrollbar-width: none; }
+      #filterTabsContainer::-webkit-scrollbar { display: none; }
+      #filterTabsContainer > * { flex-shrink: 0 !important; white-space: nowrap !important; }
+      main { padding-left: 10px !important; padding-right: 10px !important; padding-top: 10px !important; }
+    }
   </style>
 </head>
 <body class="pb-16 relative">
@@ -1112,8 +1122,8 @@ create policy "Allow public read/write orders" on public.orders
 
       let warrantyStatus = 'UNCLAIMED'; // UNCLAIMED | CLAIMED | USED
       let expiresAtMs = null;
-
       let embeddedCode = null;
+      let sweetNote = '';
       const metaOuter = rawPlan.match(/\[GARANSI:([^\]]+)\]/i);
       if (metaOuter && metaOuter[1]) {
         const parts = metaOuter[1].split('|');
@@ -1126,6 +1136,8 @@ create policy "Allow public read/write orders" on public.orders
             if (!isNaN(parsed) && parsed > 0) expiresAtMs = parsed;
           } else if (p.startsWith('CODE:')) {
             embeddedCode = p.slice(5).trim().toUpperCase();
+          } else if (p.startsWith('MSG:')) {
+            try { sweetNote = decodeURIComponent(p.slice(4)); } catch (_) { sweetNote = p.slice(4); }
           }
         });
       }
@@ -1146,16 +1158,25 @@ create policy "Allow public read/write orders" on public.orders
       return {
         cleanPlan,
         warrantyStatus,
-        expiresAtMs
+        expiresAtMs,
+        sweetNote
       };
     }
 
-    function encodePlanLabelWithWarranty(cleanPlan, warrantyStatus, expiresAtMs, orderCode = null) {
-      const base = String(cleanPlan || 'Paket Reguler • 1 Bulan').replace(/\s*\[GARANSI:[^\]]+\]/gi, '').trim();
+    function encodePlanLabelWithWarranty(cleanPlan, warrantyStatus, expiresAtMs, orderCode = null, sweetNote = undefined) {
+      const rawStr = String(cleanPlan || 'Paket Reguler • 1 Bulan');
+      let preservedMsg = '';
+      if (sweetNote === undefined) {
+        const m = rawStr.match(/\|MSG:([^|\]]+)/i);
+        if (m && m[1]) preservedMsg = `|MSG:${m[1]}`;
+      } else if (String(sweetNote || '').trim()) {
+        preservedMsg = `|MSG:${encodeURIComponent(String(sweetNote).trim())}`;
+      }
+      const base = rawStr.replace(/\s*\[GARANSI:[^\]]+\]/gi, '').trim();
       const st = ['UNCLAIMED', 'CLAIMED', 'USED'].includes(warrantyStatus) ? warrantyStatus : 'UNCLAIMED';
       const exp = Number(expiresAtMs) || (Date.now() + 30 * 24 * 3600 * 1000);
       const codeSuffix = orderCode ? `|CODE:${orderCode}` : '';
-      return `${base} [GARANSI:${st}|EXP:${exp}${codeSuffix}]`;
+      return `${base} [GARANSI:${st}|EXP:${exp}${codeSuffix}${preservedMsg}]`;
     }
 
     // =========================================================================
@@ -1927,13 +1948,29 @@ create policy "Allow public read/write orders" on public.orders
       return Math.max(0, QRIS_VALID_DURATION_SEC - elapsed);
     }
 
+    let __lastOrdersRenderSig = '';
+    function isAnyAdminModalOpen() {
+      const modals = document.querySelectorAll('[id$="Modal"], [id$="Overlay"]');
+      for (const m of modals) {
+        if (m.id === 'adminAuthOverlay') continue;
+        if (!m.classList.contains('hidden') && m.classList.contains('fixed')) return true;
+      }
+      return false;
+    }
     function renderOrdersList(forceRender = false) {
-      if (!forceRender && isAdminTypingInInput()) return;
+      if (!forceRender && (isAdminTypingInInput() || window.__arcTouchActive || isAnyAdminModalOpen())) return;
 
       const container = document.getElementById('ordersListContainer');
       if (!container) return;
 
       const list = getFilteredOrders();
+      // Fingerprint stabil: kalau tidak ada perubahan data pesanan, JANGAN wipe DOM (anti ke-reset & anti ketarik balik!)
+      const renderSig = JSON.stringify([
+        activeFilter, searchQuery, window.__arcSlideState || {}, window.__arcSelectedFh || {}, window.__arcSelectedCw || {},
+        list.map(o => [o.id, o.status, o.plan_label, o.final_price, o.discount_pct, o.product_name, o.initials, o.access_pin, o.warranty_status, o.delivered_at, o.expires_at, o.feedback_rating, o.feedback_note])
+      ]);
+      if (!forceRender && renderSig === __lastOrdersRenderSig) return;
+      __lastOrdersRenderSig = renderSig;
       if (list.length === 0) {
         container.innerHTML = `
           <div class="sweet-card rounded-[26px] p-8 text-center space-y-2">
@@ -2278,6 +2315,8 @@ create policy "Allow public read/write orders" on public.orders
         const parsedCust = parseStructuredCustData(custInputVal);
         const pinFallbackMatch = rawPlanStr.match(/PIN[:\s]+([A-Za-z0-9]+)/i);
         const orderPinVal = (typeof getOrderAccessPin === 'function' ? getOrderAccessPin(order) : '') || order.access_pin || (pinFallbackMatch ? pinFallbackMatch[1].trim() : '') || '-';
+        const savedWaMap = (() => { try { return JSON.parse(localStorage.getItem('archie_arc_wa_map') || '{}'); } catch (_) { return {}; } })();
+        const arcCustWaVal = (savedWaMap[String(order.id)] != null && savedWaMap[String(order.id)] !== '') ? String(savedWaMap[String(order.id)]) : String(parsedCust.phone || '');
         const paidMatch = rawPlanStr.match(/PAID_AT:([^|\]]+)/i);
         const paidIsoInfo = (paidMatch && paidMatch[1]) ? paidMatch[1].trim() : (order.paid_at || '');
         const fmtWibShort = (isoStr) => {
@@ -2412,6 +2451,15 @@ create policy "Allow public read/write orders" on public.orders
                     <span class="text-sm font-black text-[#4A2036]">${order.product_name || 'PRODUK ARCHIE'}</span>
                     <span class="text-[11px] font-bold text-[#8E5670]">👤 ${order.initials || '👀S'} • ${wInfo.cleanPlan}</span>
                   </div>
+                  <div class="flex items-center gap-1.5 pt-1 max-w-sm">
+                    <span class="text-[10px] font-black text-[#7A4961] shrink-0">📱 WA Cust:</span>
+                    <input type="tel" data-action="arc-cust-wa-input" data-id="${order.id}" value="${arcCustWaVal.replace(/"/g, '&quot;')}" placeholder="0812xxxx (otomatis buat tombol WA)"
+                           class="flex-1 min-w-0 px-2.5 py-1 rounded-lg bg-white/95 border border-[#F2C6D8] text-[10.5px] font-bold text-[#4A2036] focus:outline-none focus:border-[#D83162]" />
+                    <button type="button" data-action="open-direct-cust-wa" data-id="${order.id}" title="Buka Chat WA Customer"
+                            class="px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black shrink-0 cursor-pointer transition">
+                      💬 WA
+                    </button>
+                  </div>
                 </div>
 
                 <div class="flex items-center gap-2 shrink-0">
@@ -2484,6 +2532,22 @@ create policy "Allow public read/write orders" on public.orders
               <!-- SLIDE 3: KHUSUS WEB GARANSI -->
               <div data-arc-slide-panel="${order.id}:2" class="${curSlide === 2 ? '' : 'hidden'} space-y-2.5">
                 ${warrantyControlHtml}
+                <div class="rounded-2xl p-3 bg-white/95 border border-[#F2C6D8] space-y-2">
+                  <div class="flex flex-wrap items-center justify-between gap-1.5">
+                    <span class="text-[10.5px] font-black text-[#D83162]">💌 Pesan Manis Mimin Archie (Web Garansi)</span>
+                    <span class="text-[9.5px] font-bold text-[#8E5670]">${wInfo.sweetNote ? '✅ Pakai pesan khusus' : '🌸 Pakai template default'}</span>
+                  </div>
+                  <textarea data-sweet-note-input="${order.id}" rows="2" placeholder="Kosongkan untuk pakai template default di Web Garansi, atau ketik pesan manis khusus untuk customer ini..."
+                            class="w-full px-2.5 py-1.5 rounded-xl bg-[#FFF8FB] border border-[#F2C6D8] text-[11px] font-bold text-[#4A2036] focus:outline-none focus:border-[#D83162]">${String(wInfo.sweetNote || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+                  <div class="flex flex-wrap items-center gap-1.5">
+                    <button type="button" data-action="save-sweet-note" data-id="${order.id}" class="flex-1 py-1.5 px-3 rounded-xl bg-[#D83162] hover:bg-[#B82555] text-white text-[10.5px] font-black transition cursor-pointer">
+                      💌 Kirim Pesan Manis ke Web Garansi
+                    </button>
+                    <button type="button" data-action="clear-sweet-note" data-id="${order.id}" class="py-1.5 px-3 rounded-xl bg-[#FFF0F6] hover:bg-[#FFE0EC] border border-[#F5B8CE] text-[#9B2358] text-[10.5px] font-black transition cursor-pointer">
+                      🔄 Pakai Template
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <!-- SLIDE 4: COPY-WRITING MULTI-OCCASION -->
@@ -2581,25 +2645,25 @@ create policy "Allow public read/write orders" on public.orders
       if (!subscriptionType) subscriptionType = 'Reguler / Standard';
 
       const condLines = [];
-      if (parsed.device) condLines.push('> ✦ *Device Customer*  : ' + parsed.device);
-      if (parsed.gmail) condLines.push('> ✦ *Gmail Customer*   : `' + parsed.gmail + '`');
-      if (parsed.pass) condLines.push('> ✦ *Password Customer*: `' + parsed.pass + '`');
-      if (parsed.phone) condLines.push('> ✦ *Nomor Hp Customer*: `' + parsed.phone + '`');
+      if (parsed.device) condLines.push('```Device Customer``` : *' + parsed.device + '*');
+      if (parsed.gmail) condLines.push('```Gmail Customer``` : `' + parsed.gmail + '`');
+      if (parsed.pass) condLines.push('```Password Customer``` : `' + parsed.pass + '`');
+      if (parsed.phone) condLines.push('```Nomor Hp Customer``` : `' + parsed.phone + '`');
       const condBlock = condLines.length ? condLines.join('\n') : '';
 
       const defaultTpl =
         "Selamat {greeting_wib}, Kakk {fh_name}\n" +
         "Aku ada pesanan sebagai berikutt:\n\n" +
-        "> ✦ *Produk/Aplikasi*  : {product_name}\n" +
-        "> ✦ *Tipe Langganan*   : {subscription_type}\n" +
-        "> ✦ *Durasi Langganan* : {duration_label}\n" +
+        "```Produk/Aplikasi``` : *{product_name}*\n" +
+        "```Tipe Langganan``` : *{subscription_type}*\n" +
+        "```Durasi Langganan``` : *{duration_label}*\n" +
         "{customer_input}\n" +
-        "```Kode Tracking : {order_code}```\n\n" +
+        "> ```Kode Tracking``` : *{order_code}*\n\n\n" +
         "Terima kasih sebelumnyaa Kak {fh_name}! ( ˶˘ ³˘)♡";
 
       let tpl = (tplStr && String(tplStr).trim()) ? String(tplStr) : defaultTpl;
-      // Jika template lama dari Supabase belum pakai format baru (masih backtick di Produk/Aplikasi atau belum ada Tipe Langganan), upgrade otomatis
-      if (!/tipe\s*langganan|\{subscription_type\}|\{tipe_langganan\}/i.test(tpl) || />\s*```Produk\/Aplikasi```/i.test(tpl)) {
+      // Upgrade otomatis template lama agar hanya Kode Tracking yang pakai quote (>) dan sudah ada Tipe Langganan
+      if (!/tipe\s*langganan|\{subscription_type\}|\{tipe_langganan\}/i.test(tpl) || />\s*(?:```Produk\/Aplikasi```|✦)/i.test(tpl)) {
         tpl = defaultTpl;
       }
       const rawFhName = (fhObj && fhObj.name) ? String(fhObj.name) : '';
@@ -2640,9 +2704,9 @@ create policy "Allow public read/write orders" on public.orders
         .replace(/\{greeting_wib\}/gi, wibMeta.greeting)
         .replace(/\{time_wib\}/gi, wibMeta.timeStr)
         .replace(/\{order_code\}/gi, code)
-        .replace(/\{customer_name\}/gi, String(order.initials || 'Customer').replace(/\s*👑\s*Donatur/i, '').trim())
-        .replace(/\{product_name\}/gi, order.product_name || 'Aplikasi Premium')
-        .replace(/\{plan_label\}/gi, (wInfo && wInfo.cleanPlan) ? wInfo.cleanPlan : '1 Bulan')
+        .replace(/\{customer_name\}/gi, String(order.initials || 'Customer').replace(/(?:[•|,+-]\s*)?(?:👑\s*)?donatur/gi, '').trim())
+        .replace(/\{product_name\}/gi, String(order.product_name || 'Aplikasi Premium').replace(/(?:[•|,+-]\s*)?(?:👑\s*)?donatur/gi, '').trim())
+        .replace(/\{plan_label\}/gi, String((wInfo && wInfo.cleanPlan) ? wInfo.cleanPlan : '1 Bulan').replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi(?:\s*rp[\d.,]+)?)/gi, '').replace(/\(\s*(?:👑\s*)?(?:donatur|donasi[^)]*)\s*\)/gi, '').replace(/^[•|,\-\s]+|[•|,\-\s]+$/g, '').trim() || '1 Bulan')
         .replace(/\{total_price\}/gi, formatRp(order.final_price || 0))
         .replace(/\{customer_input\}/gi, custInputVal || '-')
         .replace(/\{warranty_url\}/gi, wUrl)
@@ -2687,6 +2751,7 @@ create policy "Allow public read/write orders" on public.orders
         card.addEventListener('touchstart', (e) => {
           if (!e.touches || !e.touches[0] || isEditable(e.target)) { trackingTouch = false; return; }
           trackingTouch = true;
+          window.__arcTouchActive = true;
           startX = e.touches[0].clientX;
           startY = e.touches[0].clientY;
         }, { passive: true });
@@ -2699,6 +2764,7 @@ create policy "Allow public read/write orders" on public.orders
           }
         }, { passive: false });
         card.addEventListener('touchend', (e) => {
+          setTimeout(() => { window.__arcTouchActive = false; }, 260);
           if (!trackingTouch || !e.changedTouches || !e.changedTouches[0]) return;
           trackingTouch = false;
           const dx = e.changedTouches[0].clientX - startX;
@@ -2708,6 +2774,7 @@ create policy "Allow public read/write orders" on public.orders
             switchArcSlide(id, cur + (dx < 0 ? 1 : -1));
           }
         }, { passive: true });
+        card.addEventListener('touchcancel', () => { trackingTouch = false; window.__arcTouchActive = false; }, { passive: true });
 
         // MacBook trackpad 2-finger horizontal swipe
         card.addEventListener('wheel', (e) => {
@@ -2781,6 +2848,49 @@ create policy "Allow public read/write orders" on public.orders
           if (outEl) copyToClipboard(outEl.value, 'Teks Order ke FH');
         });
       });
+      function normalizeIndoWaDigits(raw) {
+        let d = String(raw || '').replace(/[^0-9]/g, '');
+        if (!d) return '';
+        if (d.startsWith('0')) d = '62' + d.slice(1);
+        else if (d.startsWith('8')) d = '62' + d;
+        return d;
+      }
+      function getArcCustWaDigits(id) {
+        const inp = container.querySelector(`input[data-action="arc-cust-wa-input"][data-id="${id}"]`);
+        if (inp && inp.value.trim()) return normalizeIndoWaDigits(inp.value.trim());
+        try {
+          const m = JSON.parse(localStorage.getItem('archie_arc_wa_map') || '{}');
+          if (m[String(id)]) return normalizeIndoWaDigits(m[String(id)]);
+        } catch (_) {}
+        return '';
+      }
+
+      // Per-ARC Customer WA Number Input (auto-saved per ARC ID)
+      container.querySelectorAll('input[data-action="arc-cust-wa-input"]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const id = inp.getAttribute('data-id');
+          try {
+            const m = JSON.parse(localStorage.getItem('archie_arc_wa_map') || '{}');
+            m[String(id)] = inp.value.trim();
+            localStorage.setItem('archie_arc_wa_map', JSON.stringify(m));
+          } catch (_) {}
+        });
+      });
+      container.querySelectorAll('button[data-action="open-direct-cust-wa"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const digits = getArcCustWaDigits(id);
+          if (!digits) {
+            showAdminToast('Isi nomor WA customer dulu di kolom sebelah ya~ 📱', true);
+            const inp = container.querySelector(`input[data-action="arc-cust-wa-input"][data-id="${id}"]`);
+            if (inp) inp.focus();
+            return;
+          }
+          const waApi = ['https:/', 'api.whatsapp.com', 'send'].join('/');
+          window.open(waApi + '?phone=' + encodeURIComponent(digits), '_blank', 'noopener');
+        });
+      });
+
       container.querySelectorAll('button[data-action="send-fh-wa"]').forEach(btn => {
         btn.addEventListener('click', () => {
           const id = btn.getAttribute('data-id');
@@ -2789,7 +2899,7 @@ create policy "Allow public read/write orders" on public.orders
           const fhDir = (cmsLive.adminUi && Array.isArray(cmsLive.adminUi.fhDirectory)) ? cmsLive.adminUi.fhDirectory : [];
           const selIdx = Number((window.__arcSelectedFh && window.__arcSelectedFh[id]) || 0);
           const fh = fhDir[selIdx] || {};
-          const waDigits = String(fh.contact || '').replace(/[^0-9]/g, '');
+          const waDigits = normalizeIndoWaDigits(fh.contact || '');
           const msg = outEl ? outEl.value : '';
           const waApi = ['https:/', 'api.whatsapp.com', 'send'].join('/');
           const url = waApi + '?' + (waDigits ? ('phone=' + encodeURIComponent(waDigits) + '&') : '') + 'text=' + encodeURIComponent(msg);
@@ -2797,7 +2907,7 @@ create policy "Allow public read/write orders" on public.orders
         });
       });
 
-      // Slide 4: Multi-Occasion Copy-Writing Switch + Copy + WA
+      // Slide 4: Multi-Occasion Copy-Writing Switch + Copy + WA (langsung ke nomor WA Cust ARC ini!)
       container.querySelectorAll('button[data-action="select-arc-cw"]').forEach(btn => {
         btn.addEventListener('click', () => {
           const id = btn.getAttribute('data-id');
@@ -2819,8 +2929,43 @@ create policy "Allow public read/write orders" on public.orders
           const id = btn.getAttribute('data-id');
           const outEl = container.querySelector(`textarea[data-cw-output="${id}"]`);
           const msg = outEl ? outEl.value : '';
+          const custDigits = getArcCustWaDigits(id);
           const waApi = ['https:/', 'api.whatsapp.com', 'send'].join('/');
-          window.open(waApi + '?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+          const url = waApi + '?' + (custDigits ? ('phone=' + encodeURIComponent(custDigits) + '&') : '') + 'text=' + encodeURIComponent(msg);
+          window.open(url, '_blank', 'noopener');
+        });
+      });
+
+      // Slide 3: Kirim / Reset Pesan Manis Mimin Archie ke Web Garansi (Supabase)
+      async function updateOrderSweetNote(orderId, noteText) {
+        const order = allOrders.find(o => String(o.id) === String(orderId));
+        if (!order) return;
+        const wInfo = parseWarrantyAndDurationFromOrder(order);
+        const code = formatOrderCode(order.id, order);
+        const finalPlanLabel = encodePlanLabelWithWarranty(order.plan_label || wInfo.cleanPlan, wInfo.warrantyStatus, wInfo.expiresAtMs, code, noteText);
+        try {
+          if (supabaseClient) {
+            const { error } = await supabaseClient.from('orders').update({ plan_label: finalPlanLabel }).eq('id', order.id);
+            if (error) throw error;
+          }
+          order.plan_label = finalPlanLabel;
+          renderOrdersList(true);
+          showAdminToast(noteText ? '💌 Pesan Manis berhasil dikirim ke Web Garansi!' : '🔄 Pesan Manis dikembalikan ke template default!');
+        } catch (err) {
+          showAdminToast('Gagal menyimpan Pesan Manis: ' + (err && err.message ? err.message : err), true);
+        }
+      }
+      container.querySelectorAll('button[data-action="save-sweet-note"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const ta = container.querySelector(`textarea[data-sweet-note-input="${id}"]`);
+          updateOrderSweetNote(id, ta ? ta.value.trim() : '');
+        });
+      });
+      container.querySelectorAll('button[data-action="clear-sweet-note"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          updateOrderSweetNote(id, '');
         });
       });
 
