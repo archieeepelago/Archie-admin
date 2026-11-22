@@ -275,8 +275,14 @@
         <button id="openSqlModalBtn" type="button" title="Lihat Struktur SQL" class="px-2.5 py-1.5 rounded-full bg-white hover:bg-[#FFF5F9] border border-[#F5B8CE] text-[#7A4961] text-[11px] font-extrabold transition cursor-pointer">
           🛠️ SQL
         </button>
-        <a href="/editor" class="px-3 py-1.5 rounded-full bg-gradient-to-r from-[#FFF0F6] to-[#FFE0EC] hover:from-[#FFE0EC] hover:to-[#FFD0E2] border border-[#F5B8CE] text-[#9B2358] text-[11px] font-black flex items-center gap-1 transition shadow-sm">
-          <span>✏️ Web Editor</span>
+        <a href="/editor" data-archie-nav="editor" class="px-3 py-1.5 rounded-full bg-gradient-to-r from-[#FFF0F6] to-[#FFE0EC] hover:from-[#FFE0EC] hover:to-[#FFD0E2] border border-[#F5B8CE] text-[#9B2358] text-[11px] font-black flex items-center gap-1 transition shadow-sm">
+          <span>✏️ Editor</span>
+        </a>
+        <a href="/customer" data-archie-nav="customer" class="px-2.5 py-1.5 rounded-full bg-white hover:bg-[#FFF0F6] border border-[#F5B8CE] text-[#7A4961] text-[11px] font-extrabold transition">
+          🛍️ Store
+        </a>
+        <a href="/garansi" data-archie-nav="garansi" class="px-2.5 py-1.5 rounded-full bg-white hover:bg-[#FFF0F6] border border-[#F5B8CE] text-[#7A4961] text-[11px] font-extrabold transition">
+          🎫 Garansi
         </a>
         <button id="adminLogoutHeaderBtn" type="button" class="px-2.5 py-1.5 rounded-full bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 text-[11px] font-black transition cursor-pointer">
           🚪 Keluar
@@ -484,7 +490,17 @@
         <button type="button" data-filter="PAID" class="adm-tab-btn px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-white text-[#7A4961] border border-[#F5B8CE] hover:bg-[#FFE0EC] transition cursor-pointer">
           🎟️ Lunas &amp; Klaim Garansi (<span id="badgeCountPaid">0</span>)
         </button>
+        <button type="button" data-filter="H1_EXP" class="adm-tab-btn px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-amber-50 text-amber-800 border-2 border-amber-400 hover:bg-amber-100 transition cursor-pointer">
+          ⚠️ H-1 Habis (<span id="badgeCountH1">0</span>)
+        </button>
       </div>
+      <style>
+        @keyframes arcH1Blink {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55), 0 6px 18px rgba(216, 49, 98, 0.14); border-color: #F59E0B; }
+          50% { box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.22), 0 8px 22px rgba(245, 158, 11, 0.28); border-color: #E11D48; }
+        }
+        .arc-h1-blink { animation: arcH1Blink 1.35s ease-in-out infinite !important; }
+      </style>
       <div class="text-[10.5px] font-bold text-[#7A4961]">
         💡 Tekan <kbd class="px-1.5 py-0.5 rounded bg-white border border-[#F5B8CE] text-[#D83162] font-black">Ctrl+V</kbd> untuk otomatis Auto-Crop &amp; Bingkai Lucu screenshot QRIS!
       </div>
@@ -1823,6 +1839,19 @@ create policy "Allow public read/write orders" on public.orders
       document.getElementById('badgeCountSecret').textContent = secretAll;
       document.getElementById('badgeCountQris').textContent = qrisWait + qrisSent;
       document.getElementById('badgeCountPaid').textContent = paidList.length;
+
+      const h1Count = allOrders.filter(isOrderH1Expiring).length;
+      const badgeH1 = document.getElementById('badgeCountH1');
+      if (badgeH1) badgeH1.textContent = h1Count;
+      const h1Btn = document.querySelector('button[data-filter="H1_EXP"]');
+      if (h1Btn) h1Btn.classList.toggle('animate-pulse', h1Count > 0);
+    }
+
+    function isOrderH1Expiring(order) {
+      const w = parseWarrantyAndDurationFromOrder(order);
+      const expMs = Number(w && w.expiresAtMs) || 0;
+      const rem = expMs - Date.now();
+      return rem > 0 && rem <= 86400000;
     }
 
     function getFilteredOrders() {
@@ -1844,6 +1873,8 @@ create policy "Allow public read/write orders" on public.orders
         filtered = allOrders.filter(o => o.status === 'WAITING_QRIS' || o.status === 'QRIS_SENT');
       } else if (currentFilter === 'PAID') {
         filtered = allOrders.filter(o => o.status === 'PAID');
+      } else if (currentFilter === 'H1_EXP') {
+        filtered = allOrders.filter(isOrderH1Expiring);
       }
 
       if (searchQuery.trim() !== '') {
@@ -1911,7 +1942,7 @@ create policy "Allow public read/write orders" on public.orders
         return;
       }
 
-      container.innerHTML = list.map(order => {
+      container.innerHTML = list.map((order, orderIdx) => {
         const draft = ensureDraftForOrder(order);
         const status = order.status || 'WAITING_QRIS';
         const timeAgo = formatRelativeTime(order.created_at);
@@ -2184,17 +2215,107 @@ create policy "Allow public read/write orders" on public.orders
 
         const cleanFeedback = (order.feedback || '').startsWith('[SURPRISE]:') ? '' : (order.feedback || '');
         const feedbackHtml = cleanFeedback
-          ? `<div class="rounded-xl px-3 py-2 bg-[#FFF6FA] border border-[#F5C6D8] text-[11px] flex items-center gap-2">
+          ? `<div class="rounded-xl px-3 py-2 bg-white/85 border border-[#F5C6D8] text-[11px] flex items-center gap-2">
                <span>💌</span>
                <span class="font-bold text-[#4A2036]">${cleanFeedback}</span>
              </div>`
           : '';
 
+        // 3 Alternating Pastel Themes (Kuning Pastel -> Pink Pastel -> Hijau Pastel -> repeat)
+        const pastelThemes = [
+          {
+            cardBg: 'bg-[#FFFDF0]', cardBorder: 'border-[#F3DF99]',
+            stripe: 'bg-gradient-to-b from-[#F5C542] to-[#F9D976]',
+            pillActive: 'bg-[#F5C542] text-[#4A2036] shadow-xs',
+            pillIdle: 'bg-white/75 text-[#8A6200] border border-[#F3DF99] hover:bg-white',
+            panelBg: 'bg-white/85 border-[#F3E2A6]'
+          },
+          {
+            cardBg: 'bg-[#FFF6FA]', cardBorder: 'border-[#F4C2D7]',
+            stripe: 'bg-gradient-to-b from-[#F06292] to-[#FF9EBB]',
+            pillActive: 'bg-[#D83162] text-white shadow-xs',
+            pillIdle: 'bg-white/75 text-[#9B2358] border border-[#F4C2D7] hover:bg-white',
+            panelBg: 'bg-white/85 border-[#F5C6D8]'
+          },
+          {
+            cardBg: 'bg-[#F3FCF6]', cardBorder: 'border-[#B8E6C8]',
+            stripe: 'bg-gradient-to-b from-[#34B37A] to-[#6EE0A8]',
+            pillActive: 'bg-[#2E9E6B] text-white shadow-xs',
+            pillIdle: 'bg-white/75 text-[#166534] border border-[#B8E6C8] hover:bg-white',
+            panelBg: 'bg-white/85 border-[#C5EBD2]'
+          }
+        ];
+        const pTheme = pastelThemes[orderIdx % 3];
+
+        const custDataMatch = rawPlanStr.match(/CUST_DATA:([^|\]]+)/i);
+        const custInputVal = custDataMatch && custDataMatch[1] ? custDataMatch[1].trim() : '';
+        const wibMeta = getAdminRealtimeWibMeta();
+
+        window.__arcSlideState = window.__arcSlideState || {};
+        window.__arcSelectedFh = window.__arcSelectedFh || {};
+        window.__arcSelectedCw = window.__arcSelectedCw || {};
+        const curSlide = Number(window.__arcSlideState[order.id] || 0);
+
+        const cmsLive = (window.ArchieLiveCms && window.ArchieLiveCms.getCached) ? window.ArchieLiveCms.getCached() : (window.ARCHIE_DEFAULT_CMS || {});
+        const admUi = (cmsLive && cmsLive.adminUi) ? cmsLive.adminUi : ((window.ARCHIE_DEFAULT_CMS && window.ARCHIE_DEFAULT_CMS.adminUi) || {});
+        const fhDir = Array.isArray(admUi.fhDirectory) ? admUi.fhDirectory : [];
+        const selFhIdx = Number(window.__arcSelectedFh[order.id] || 0);
+        const activeFh = fhDir[selFhIdx] || { name: 'FH Supplier', contact: '', specialty: 'Semua App' };
+        const fhOrderText = buildFhOrderConvertedText(order, activeFh, custInputVal, wibMeta, admUi.fhOrderTemplate);
+
+        const cwList = (Array.isArray(admUi.copywritingTemplates) && admUi.copywritingTemplates.length > 0)
+          ? admUi.copywritingTemplates
+          : ((window.ARCHIE_DEFAULT_CMS && window.ARCHIE_DEFAULT_CMS.adminUi && window.ARCHIE_DEFAULT_CMS.adminUi.copywritingTemplates) || []);
+        const selCwIdx = Math.min(Number(window.__arcSelectedCw[order.id] || 0), Math.max(0, cwList.length - 1));
+        const activeCw = cwList[selCwIdx] || { icon: '✨', label: 'Umum', template: 'Halo {greeting_wib} Kak {customer_name}! 🌸' };
+        const cwText = buildCopywritingConvertedText(order, activeCw.template, custInputVal, wibMeta, wInfo);
+
+        const custInputBoxHtml = custInputVal
+          ? `<div class="rounded-xl px-3 py-2 bg-white border border-[#F5C6D8] flex flex-wrap items-center justify-between gap-2">
+               <div class="min-w-0">
+                 <div class="text-[9.5px] font-black uppercase tracking-wider text-[#D83162]">🔐 Data Akun dari Customer</div>
+                 <div class="text-[11px] font-extrabold text-[#4A2036] break-all">${custInputVal}</div>
+               </div>
+               <button type="button" data-action="copy-cust-data" data-text="${custInputVal.replace(/"/g, '&quot;')}"
+                       class="px-2.5 py-1 rounded-lg bg-[#FFF0F6] hover:bg-[#D83162] text-[#D83162] hover:text-white border border-[#F5B8CE] text-[10px] font-black transition cursor-pointer shrink-0">
+                 📋 Salin Data
+               </button>
+             </div>`
+          : `<div class="rounded-xl px-3 py-1.5 bg-white/70 border border-dashed border-[#E8CED9] text-[10px] font-bold text-[#8E5670]">
+               📝 Data Akun Customer: <span class="text-[#4A2036]">Tidak perlu input (akun dari Mimin)</span>
+             </div>`;
+
+        const fhLeftListHtml = fhDir.length > 0
+          ? fhDir.map((fh, fIdx) => `
+              <button type="button" data-action="select-arc-fh" data-id="${order.id}" data-fh-idx="${fIdx}"
+                      class="w-full text-left px-2.5 py-2 rounded-xl border text-[10.5px] transition cursor-pointer ${fIdx === selFhIdx ? 'bg-[#4A2036] text-[#FFE066] border-[#4A2036] shadow-xs' : 'bg-white hover:bg-[#FFF0F6] text-[#4A2036] border-[#EAD0DC]'}">
+                <div class="font-black truncate">${fh.name || ('FH #' + (fIdx + 1))}</div>
+                <div class="text-[9px] font-bold opacity-80 truncate">${fh.specialty || fh.contact || 'Supplier FH'}</div>
+              </button>
+            `).join('')
+          : `<div class="p-2.5 rounded-xl bg-white/80 border border-dashed border-[#EAD0DC] text-[10px] font-bold text-[#7A4961] space-y-1.5">
+               <div>Belum ada FH di Direktori Editor.</div>
+               <input type="text" data-action="custom-fh-name" data-id="${order.id}" placeholder="Ketik nama FH manual..."
+                      class="w-full px-2.5 py-1.5 rounded-lg border border-[#F5C6D8] bg-white text-[10.5px] font-bold text-[#4A2036] focus:outline-none focus:border-[#D83162]" />
+             </div>`;
+
+        const slideLabels = [
+          { idx: 0, lbl: '1 • Info Cust' },
+          { idx: 1, lbl: '2 • Converter FH' },
+          { idx: 2, lbl: '3 • Web Garansi' },
+          { idx: 3, lbl: '4 • Copy-Writing' }
+        ];
+
+        const isH1Expiring = (expMs > Date.now() && (expMs - Date.now()) <= 86400000);
+        const h1BlinkClass = isH1Expiring ? ' arc-h1-blink' : '';
+        const h1BadgeHtml = isH1Expiring
+          ? '<span class="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[9.5px] font-black animate-pulse shadow-xs">⚠️ H-1 HABIS</span>'
+          : '';
+
         return `
-          <article class="relative bg-white rounded-[24px] border border-[#F0D6E2] shadow-sm hover:shadow-md transition-all overflow-hidden flex">
-            <div class="w-1.5 shrink-0 ${accentStripe}"></div>
+          <article data-arc-card="${order.id}" class="relative ${pTheme.cardBg} rounded-[24px] border-2 ${pTheme.cardBorder}${h1BlinkClass} shadow-sm hover:shadow-md transition-all overflow-hidden flex">
+            <div class="w-2 shrink-0 ${pTheme.stripe}"></div>
             <div class="flex-1 p-3.5 sm:p-4 space-y-3 min-w-0">
-              <!-- TOP BAR: CODE + PRODUCT + PRICE + STATUS -->
               <div class="flex flex-wrap items-start justify-between gap-2.5">
                 <div class="space-y-1 min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-1.5">
@@ -2203,6 +2324,7 @@ create policy "Allow public read/write orders" on public.orders
                       ${orderCode} 📋
                     </button>
                     ${statusBadgeHtml}
+                    ${h1BadgeHtml}
                     ${((order.initials || '').includes('Donatur') || (order.plan_label || '').includes('Donatur'))
                       ? '<span class="px-2 py-0.5 rounded-full donatur-badge-admin text-[9px] font-black">👑 Donatur</span>'
                       : ''}
@@ -2220,20 +2342,92 @@ create policy "Allow public read/write orders" on public.orders
                     <div class="text-[9.5px] font-bold text-[#9A637B]">${Number(order.discount_pct || 0) > 0 ? `Diskon -${order.discount_pct}%` : '0% MDR'}</div>
                   </div>
                   <button type="button" data-action="edit-order" data-id="${order.id}" title="Edit detail & nomor antrean pesanan"
-                          class="w-8 h-8 rounded-xl bg-[#FFF0F6] hover:bg-[#D83162] text-[#D83162] hover:text-white border border-[#F5B8CE] flex items-center justify-center text-xs transition cursor-pointer">
+                          class="w-8 h-8 rounded-xl bg-white hover:bg-[#D83162] text-[#D83162] hover:text-white border border-[#F5B8CE] flex items-center justify-center text-xs transition cursor-pointer">
                     ✏️
                   </button>
                   <button type="button" data-action="delete-order" data-id="${order.id}" title="Hapus pesanan"
-                          class="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 flex items-center justify-center text-xs transition cursor-pointer">
+                          class="w-8 h-8 rounded-xl bg-white hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 flex items-center justify-center text-xs transition cursor-pointer">
                     🗑️
                   </button>
                 </div>
               </div>
 
-              ${secretActionHtml}
-              ${qrisActionHtml}
-              ${warrantyControlHtml}
-              ${feedbackHtml}
+              <!-- 4-SLIDE CAROUSEL NAV BAR (SWIPEABLE / CLICKABLE) -->
+              <div class="flex items-center justify-between gap-1.5 pt-1 border-t border-dashed border-black/10">
+                <button type="button" data-action="arc-slide-step" data-id="${order.id}" data-dir="-1"
+                        class="w-7 h-7 rounded-xl bg-white/90 hover:bg-white border border-black/10 text-[#4A2036] font-black text-xs flex items-center justify-center shrink-0 cursor-pointer" title="Geser kiri">‹</button>
+                <div class="flex-1 flex items-center gap-1 overflow-x-auto no-scrollbar">
+                  ${slideLabels.map(sl => `
+                    <button type="button" data-action="arc-slide-set" data-id="${order.id}" data-slide="${sl.idx}"
+                            class="flex-1 min-w-[92px] px-2.5 py-1.5 rounded-xl text-[10px] font-black whitespace-nowrap transition cursor-pointer ${curSlide === sl.idx ? pTheme.pillActive : pTheme.pillIdle}">
+                      ${sl.lbl}
+                    </button>
+                  `).join('')}
+                </div>
+                <button type="button" data-action="arc-slide-step" data-id="${order.id}" data-dir="1"
+                        class="w-7 h-7 rounded-xl bg-white/90 hover:bg-white border border-black/10 text-[#4A2036] font-black text-xs flex items-center justify-center shrink-0 cursor-pointer" title="Geser kanan">›</button>
+              </div>
+
+              <!-- SLIDE 1: INFO DARI WEB CUSTOMER -->
+              <div data-arc-slide-panel="${order.id}:0" class="${curSlide === 0 ? '' : 'hidden'} space-y-2.5">
+                ${custInputBoxHtml}
+                ${secretActionHtml}
+                ${qrisActionHtml}
+                ${feedbackHtml}
+                ${(!secretActionHtml && !qrisActionHtml && !feedbackHtml) ? `
+                  <div class="rounded-xl p-2.5 ${pTheme.panelBg} border text-[11px] font-bold text-[#6D3B53] flex flex-wrap items-center justify-between gap-2">
+                    <span>✅ Pembayaran lunas (${formatRp(order.final_price)} • Diskon ${order.discount_pct || 0}%)</span>
+                    <button type="button" data-action="copy-nominal" data-nominal="${order.final_price}" class="px-2.5 py-1 rounded-lg bg-white border border-[#F5B8CE] text-[#D83162] text-[10px] font-black cursor-pointer">📋 Copy Nominal</button>
+                  </div>` : ''}
+              </div>
+
+              <!-- SLIDE 2: TEXT CONVERTER KE FH (2 KOLOM + JAM WIB REALTIME) -->
+              <div data-arc-slide-panel="${order.id}:1" class="${curSlide === 1 ? '' : 'hidden'} rounded-2xl ${pTheme.panelBg} border p-3 space-y-2.5">
+                <div class="flex flex-wrap items-center justify-between gap-1.5">
+                  <span class="text-[11px] font-black text-[#4A2036]">🤝 Text Converter Order ke FH</span>
+                  <span class="px-2.5 py-0.5 rounded-full bg-[#4A2036] text-[#FFE066] text-[9.5px] font-black tabular-nums">🕒 ${wibMeta.timeStr} • ${wibMeta.greeting}</span>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+                  <div class="md:col-span-5 space-y-1.5">
+                    <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">Pilih Beli dari FH Mana:</div>
+                    <div class="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">${fhLeftListHtml}</div>
+                  </div>
+                  <div class="md:col-span-7 flex flex-col gap-2">
+                    <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">Hasil Teks Otomatis (Realtime WIB):</div>
+                    <textarea data-fh-output="${order.id}" rows="6" class="w-full px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${fhOrderText.replace(/</g, '&lt;')}</textarea>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                      <button type="button" data-action="copy-fh-text" data-id="${order.id}" class="flex-1 py-1.5 px-3 rounded-xl bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066] text-[10.5px] font-black transition cursor-pointer">📋 Salin Teks FH</button>
+                      <button type="button" data-action="send-fh-wa" data-id="${order.id}" class="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black transition cursor-pointer">📲 Kirim WA FH</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SLIDE 3: KHUSUS WEB GARANSI -->
+              <div data-arc-slide-panel="${order.id}:2" class="${curSlide === 2 ? '' : 'hidden'} space-y-2.5">
+                ${warrantyControlHtml}
+              </div>
+
+              <!-- SLIDE 4: COPY-WRITING MULTI-OCCASION -->
+              <div data-arc-slide-panel="${order.id}:3" class="${curSlide === 3 ? '' : 'hidden'} rounded-2xl ${pTheme.panelBg} border p-3 space-y-2.5">
+                <div class="flex flex-wrap items-center justify-between gap-1.5">
+                  <span class="text-[11px] font-black text-[#4A2036]">✍️ Copy-Writing Multi-Occasion</span>
+                  <span class="text-[9.5px] font-bold text-[#8E5670]">Pilih tombol untuk ganti konteks convert</span>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  ${cwList.map((cw, cIdx) => `
+                    <button type="button" data-action="select-arc-cw" data-id="${order.id}" data-cw-idx="${cIdx}"
+                            class="px-2.5 py-1 rounded-xl text-[10px] font-black transition cursor-pointer ${cIdx === selCwIdx ? 'bg-[#D83162] text-white shadow-xs' : 'bg-white hover:bg-[#FFF0F6] text-[#4A2036] border border-[#EAD0DC]'}">
+                      ${cw.icon || '✨'} ${cw.label || ('Occasion ' + (cIdx + 1))}
+                    </button>
+                  `).join('')}
+                </div>
+                <textarea data-cw-output="${order.id}" rows="5" class="w-full px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${cwText.replace(/</g, '&lt;')}</textarea>
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button type="button" data-action="copy-cw-text" data-id="${order.id}" class="flex-1 py-1.5 px-3 rounded-xl bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066] text-[10.5px] font-black transition cursor-pointer">📋 Salin Copy-Writing</button>
+                  <button type="button" data-action="open-cw-wa" data-id="${order.id}" class="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black transition cursor-pointer">📲 Buka di WA</button>
+                </div>
+              </div>
             </div>
           </article>
         `;
@@ -2242,9 +2436,224 @@ create policy "Allow public read/write orders" on public.orders
       bindOrderCardEvents();
     }
 
+    function getAdminRealtimeWibMeta() {
+      try {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Asia/Jakarta',
+          hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+        }).formatToParts(new Date());
+        const g = t => (parts.find(x => x.type === t) || {}).value || '00';
+        const hh = Number(g('hour'));
+        let greeting = 'Malam';
+        if (hh >= 4 && hh < 11) greeting = 'Pagi';
+        else if (hh >= 11 && hh < 15) greeting = 'Siang';
+        else if (hh >= 15 && hh < 18) greeting = 'Sore';
+        return { greeting, timeStr: `${g('hour')}:${g('minute')}:${g('second')} WIB` };
+      } catch (_) {
+        return { greeting: 'Kak', timeStr: 'WIB' };
+      }
+    }
+
+    function parseStructuredCustData(rawStr) {
+      const s = String(rawStr || '').trim();
+      const out = { device: '', gmail: '', pass: '', phone: '' };
+      if (!s) return out;
+      const mDev = s.match(/Device\s*[:=]\s*([^;|/]+)/i);
+      const mGm = s.match(/Gmail\s*[:=]\s*([^;|/]+)/i);
+      const mPw = s.match(/Pass(?:word)?\s*[:=]\s*([^;|/]+)/i);
+      const mPh = s.match(/(?:Phone|No\s*HP)\s*[:=]\s*([^;|/]+)/i);
+      if (mDev) out.device = mDev[1].trim();
+      if (mGm) out.gmail = mGm[1].trim();
+      if (mPw) out.pass = mPw[1].trim();
+      if (mPh) out.phone = mPh[1].trim();
+      return out;
+    }
+
+    function buildFhOrderConvertedText(order, fhObj, custInputVal, wibMeta, tplStr) {
+      const code = formatOrderCode(order.id, order);
+      const wInfo = parseWarrantyAndDurationFromOrder(order);
+      const parsed = parseStructuredCustData(custInputVal);
+      const condLines = [];
+      if (parsed.device) condLines.push('> ```Device Customer``` : *' + parsed.device + '*');
+      if (parsed.gmail) condLines.push('> ```Gmail Customer``` : `' + parsed.gmail + '`');
+      if (parsed.pass) condLines.push('> ```Password Customer``` : `' + parsed.pass + '`');
+      if (parsed.phone) condLines.push('> ```Nomor Hp Customer``` : `' + parsed.phone + '`');
+      const condBlock = condLines.length ? condLines.join('\n') : '';
+
+      const defaultTpl =
+        "Selamat {greeting_wib}, Kakk {fh_name}\n" +
+        "Aku ada pesanan sebagai berikutt:\n" +
+        "> ```Produk/Aplikasi``` : *{product_name}*\n" +
+        "> ```Durasi Langganan``` : *{plan_label}*\n" +
+        "{customer_input}\n" +
+        "```Kode Tracking``` : *{order_code}*\n\n\n" +
+        "Terima kasih sebelumnyaa Kak {fh_name}! ( ˶˘ ³˘)♡";
+
+      const tpl = (tplStr && String(tplStr).trim()) ? tplStr : defaultTpl;
+      const fhName = (fhObj && fhObj.name) ? fhObj.name : 'FH';
+      let rendered = tpl
+        .replace(/\{greeting_wib\}|\{waktu\}/gi, wibMeta.greeting)
+        .replace(/\{time_wib\}/gi, wibMeta.timeStr)
+        .replace(/\{fh_name\}|\{nama\s*fh\}/gi, fhName)
+        .replace(/\{order_code\}/gi, code)
+        .replace(/\{customer_name\}/gi, order.initials || 'Customer')
+        .replace(/\{product_name\}/gi, order.product_name || 'Aplikasi Premium')
+        .replace(/\{plan_label\}/gi, wInfo.cleanPlan || '1 Bulan')
+        .replace(/\{total_price\}/gi, formatRp(order.final_price || 0))
+        .replace(/\{device\}/gi, parsed.device || '-')
+        .replace(/\{gmail\}/gi, parsed.gmail || '-')
+        .replace(/\{password\}/gi, parsed.pass || '-')
+        .replace(/\{phone\}/gi, parsed.phone || '-')
+        .replace(/\{customer_input\}\n?/gi, condBlock ? (condBlock + '\n\n') : '\n');
+      return rendered.replace(/\n{4,}/g, '\n\n\n').trim();
+    }
+
+    function buildCopywritingConvertedText(order, tplStr, custInputVal, wibMeta, wInfo) {
+      const code = formatOrderCode(order.id, order);
+      const pin = (typeof getOrderAccessPin === 'function') ? getOrderAccessPin(order) : (order.access_pin || '-');
+      const wBase = (typeof WARRANTY_PORTAL_URL !== 'undefined' && WARRANTY_PORTAL_URL) ? WARRANTY_PORTAL_URL : ['https:/', 's.id', 'archie-garansi'].join('/');
+      const wUrl = `${wBase}?code=${encodeURIComponent(code)}`;
+      const expStr = (wInfo && wInfo.expiresAtMs)
+        ? new Date(wInfo.expiresAtMs).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+        : '-';
+      return String(tplStr || '')
+        .replace(/\{greeting_wib\}/gi, wibMeta.greeting)
+        .replace(/\{time_wib\}/gi, wibMeta.timeStr)
+        .replace(/\{order_code\}/gi, code)
+        .replace(/\{customer_name\}/gi, String(order.initials || 'Customer').replace(/\s*👑\s*Donatur/i, '').trim())
+        .replace(/\{product_name\}/gi, order.product_name || 'Aplikasi Premium')
+        .replace(/\{plan_label\}/gi, (wInfo && wInfo.cleanPlan) ? wInfo.cleanPlan : '1 Bulan')
+        .replace(/\{total_price\}/gi, formatRp(order.final_price || 0))
+        .replace(/\{customer_input\}/gi, custInputVal || '-')
+        .replace(/\{warranty_url\}/gi, wUrl)
+        .replace(/\{pin\}/gi, pin)
+        .replace(/\{access_pin\}/gi, pin)
+        .replace(/\{exp_date\}/gi, expStr);
+    }
+
     function bindOrderCardEvents() {
       const container = document.getElementById('ordersListContainer');
       if (!container) return;
+
+      const waBase = ['https:/', 'wa.me'].join('/');
+
+      // 4-Slide Navigation (Buttons + Swipe Gesture)
+      function switchArcSlide(orderId, nextIdx) {
+        const clamped = ((nextIdx % 4) + 4) % 4;
+        window.__arcSlideState = window.__arcSlideState || {};
+        window.__arcSlideState[orderId] = clamped;
+        renderOrdersList(true);
+      }
+      container.querySelectorAll('button[data-action="arc-slide-set"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          switchArcSlide(btn.getAttribute('data-id'), Number(btn.getAttribute('data-slide') || 0));
+        });
+      });
+      container.querySelectorAll('button[data-action="arc-slide-step"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const dir = Number(btn.getAttribute('data-dir') || 1);
+          const cur = Number((window.__arcSlideState && window.__arcSlideState[id]) || 0);
+          switchArcSlide(id, cur + dir);
+        });
+      });
+      container.querySelectorAll('article[data-arc-card]').forEach(card => {
+        let startX = 0, startY = 0;
+        card.addEventListener('touchstart', (e) => {
+          if (!e.touches || !e.touches[0]) return;
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+        }, { passive: true });
+        card.addEventListener('touchend', (e) => {
+          if (!e.changedTouches || !e.changedTouches[0]) return;
+          const dx = e.changedTouches[0].clientX - startX;
+          const dy = e.changedTouches[0].clientY - startY;
+          if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+            const id = card.getAttribute('data-arc-card');
+            const cur = Number((window.__arcSlideState && window.__arcSlideState[id]) || 0);
+            switchArcSlide(id, cur + (dx < 0 ? 1 : -1));
+          }
+        }, { passive: true });
+      });
+
+      // Copy Customer Input Data
+      container.querySelectorAll('button[data-action="copy-cust-data"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          copyToClipboard(btn.getAttribute('data-text') || '', 'Data Akun Customer');
+        });
+      });
+
+      // Slide 2: Select FH Supplier & Live Convert
+      container.querySelectorAll('button[data-action="select-arc-fh"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const fIdx = Number(btn.getAttribute('data-fh-idx') || 0);
+          window.__arcSelectedFh = window.__arcSelectedFh || {};
+          window.__arcSelectedFh[id] = fIdx;
+          renderOrdersList(true);
+        });
+      });
+      container.querySelectorAll('input[data-action="custom-fh-name"]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const id = inp.getAttribute('data-id');
+          const order = liveOrders.find(o => String(o.id) === String(id));
+          if (!order) return;
+          const outEl = container.querySelector(`textarea[data-fh-output="${id}"]`);
+          const cmsLive = (window.ArchieLiveCms && window.ArchieLiveCms.getCached) ? window.ArchieLiveCms.getCached() : {};
+          const rawPlan = String(order.plan_label || '');
+          const mCust = rawPlan.match(/CUST_DATA:([^|\]]+)/i);
+          if (outEl) {
+            outEl.value = buildFhOrderConvertedText(order, { name: inp.value.trim() || 'FH' }, mCust ? mCust[1].trim() : '', getAdminRealtimeWibMeta(), cmsLive.adminUi && cmsLive.adminUi.fhOrderTemplate);
+          }
+        });
+      });
+      container.querySelectorAll('button[data-action="copy-fh-text"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const outEl = container.querySelector(`textarea[data-fh-output="${id}"]`);
+          if (outEl) copyToClipboard(outEl.value, 'Teks Order ke FH');
+        });
+      });
+      container.querySelectorAll('button[data-action="send-fh-wa"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const outEl = container.querySelector(`textarea[data-fh-output="${id}"]`);
+          const cmsLive = (window.ArchieLiveCms && window.ArchieLiveCms.getCached) ? window.ArchieLiveCms.getCached() : {};
+          const fhDir = (cmsLive.adminUi && Array.isArray(cmsLive.adminUi.fhDirectory)) ? cmsLive.adminUi.fhDirectory : [];
+          const selIdx = Number((window.__arcSelectedFh && window.__arcSelectedFh[id]) || 0);
+          const fh = fhDir[selIdx] || {};
+          const waDigits = String(fh.contact || '').replace(/[^0-9]/g, '');
+          const msg = outEl ? outEl.value : '';
+          const url = (waDigits ? (waBase + '/' + waDigits) : (waBase + '/')) + '?text=' + encodeURIComponent(msg);
+          window.open(url, '_blank', 'noopener');
+        });
+      });
+
+      // Slide 4: Multi-Occasion Copy-Writing Switch + Copy + WA
+      container.querySelectorAll('button[data-action="select-arc-cw"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const cIdx = Number(btn.getAttribute('data-cw-idx') || 0);
+          window.__arcSelectedCw = window.__arcSelectedCw || {};
+          window.__arcSelectedCw[id] = cIdx;
+          renderOrdersList(true);
+        });
+      });
+      container.querySelectorAll('button[data-action="copy-cw-text"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const outEl = container.querySelector(`textarea[data-cw-output="${id}"]`);
+          if (outEl) copyToClipboard(outEl.value, 'Copy-Writing');
+        });
+      });
+      container.querySelectorAll('button[data-action="open-cw-wa"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const outEl = container.querySelector(`textarea[data-cw-output="${id}"]`);
+          const msg = outEl ? outEl.value : '';
+          window.open(waBase + '/?text=' + encodeURIComponent(msg), '_blank', 'noopener');
+        });
+      });
 
       // Copy Order Code (ARC-0001)
       container.querySelectorAll('button[data-action="copy-order-code"]').forEach(btn => {
@@ -3756,6 +4165,58 @@ create policy "Allow public read/write orders" on public.orders
     },
     adminUi: {
       fhDirectory: [],
+      fhOrderTemplate:
+        "Selamat {greeting_wib}, Kakk {fh_name}\n" +
+        "Aku ada pesanan sebagai berikutt:\n" +
+        "> ```Produk/Aplikasi``` : *{product_name}*\n" +
+        "> ```Durasi Langganan``` : *{plan_label}*\n" +
+        "{customer_input}\n" +
+        "```Kode Tracking``` : *{order_code}*\n\n\n" +
+        "Terima kasih sebelumnyaa Kak {fh_name}! ( ˶˘ ³˘)♡",
+      copywritingTemplates: [
+        {
+          id: "cw_welcome",
+          icon: "🌸",
+          label: "Order Masuk",
+          template: "Halo {greeting_wib} Kak {customer_name}! 🌸 Pesanan {order_code} ({product_name} — {plan_label}) sudah masuk antrean Mimin Archie yaa. Mohon ditunggu sebentar, lagi Mimin proses dulu! 🐰✨"
+        },
+        {
+          id: "cw_handover",
+          icon: "📦",
+          label: "Kirim Akun",
+          template: "Halo {greeting_wib} Kak {customer_name}! 🌸 Akun {product_name} ({plan_label}) untuk pesanan {order_code} sudah siap dipakai yaa!\n• Portal Garansi: {warranty_url}\n• Kata Sandi Tiket: {pin}\n• Berlaku s/d: {exp_date}\nJangan lupa kirim SS bukti login awal maksimal 1x12 jam biar garansinya aktif yaa! 🐰💗"
+        },
+        {
+          id: "cw_ss_login",
+          icon: "📸",
+          label: "Ingetin SS Awal",
+          template: "Halo {greeting_wib} Kak {customer_name} 🌸 Mimin izin ingetin sebentar yaa buat kirim screenshot bukti login awal {product_name} ({order_code}) biar stempel garansi Kakak langsung aktif di Portal Garansi! 🐰✨"
+        },
+        {
+          id: "cw_h1",
+          icon: "⏳",
+          label: "Reminder H-1",
+          template: "Halo {greeting_wib} Kak {customer_name}! 🌸 Masa aktif {product_name} ({order_code}) sebentar lagi berakhir pada {exp_date}. Kalau mau perpanjang biar nggak kepotong, langsung kabari Mimin Archie yaa~ 🐰💗"
+        },
+        {
+          id: "cw_testi",
+          icon: "💌",
+          label: "Follow-up Testi",
+          template: "Halo {greeting_wib} Kak {customer_name}! 🐰💗 Gimana pemakaian {product_name} ({order_code}) sejauh ini, aman & lancar kan? Kalau berkenan, boleh bantu kasih testimoni manis di Portal Garansi ({warranty_url}) yaa Kak, makasih banyak! 🌸✨"
+        },
+        {
+          id: "cw_claim",
+          icon: "🛡️",
+          label: "Proses Garansi",
+          template: "Halo {greeting_wib} Kak {customer_name}, laporan kendala {product_name} ({order_code}) sudah Mimin terima yaa 🙏 Lagi Mimin cek & proses klaim garansinya sesuai SLA 1x24 jam. Mohon ditunggu update dari Mimin Archie! 🐰💗"
+        },
+        {
+          id: "cw_delay",
+          icon: "🙏",
+          label: "Maaf Delay",
+          template: "Halo {greeting_wib} Kak {customer_name} 🙏 Mohon maaf banget yaa pesanan {order_code} ({product_name}) agak sedikit menunggu karena antrean lagi ramai. Mimin lagi kebut prosesnya, begitu beres langsung Mimin kirim ke Kakak! 🐰🌸"
+        }
+      ],
       waHandoverTemplate:
         "Halo Kak *{customer_name}*! Pesanan Kakak sudah 100% beres diproses yaa~ Ი𐑼🌸\n\n" +
         "> 📦 *Nomor Pesanan:* `{order_code}` _(Simpan kode ini baik-baik ya Kak!)_\n" +
@@ -3780,7 +4241,7 @@ create policy "Allow public read/write orders" on public.orders
     Object.keys(over).forEach(function(k) {
       if (over[k] !== undefined && over[k] !== null) {
         if (Array.isArray(over[k])) {
-          if (over[k].length > 0 || k === 'fhDirectory') out[k] = JSON.parse(JSON.stringify(over[k]));
+          if (over[k].length > 0 || k === 'fhDirectory' || k === 'copywritingTemplates') out[k] = JSON.parse(JSON.stringify(over[k]));
         } else if (typeof over[k] === 'object' && typeof out[k] === 'object' && !Array.isArray(out[k])) {
           out[k] = deepMerge(out[k], over[k]);
         } else {
@@ -4944,6 +5405,36 @@ create policy "Allow public read/write orders" on public.orders
         m.classList.add('hidden'); m.classList.remove('flex');
       }
     });
+  </script>
+
+  <script>
+    (function initAdminCrossWebNav() {
+      window.name = 'archie_web_admin';
+      function getWebUrl(webKey) {
+        var cms = (window.ArchieLiveCms && window.ArchieLiveCms.getCached) ? window.ArchieLiveCms.getCached() : {};
+        var urls = (cms && cms.webUrls) ? cms.webUrls : {};
+        if (urls && urls[webKey] && String(urls[webKey]).trim()) return String(urls[webKey]).trim();
+        var isFile = location.protocol === 'file:';
+        var mapFile = { customer: 'Customer.html', garansi: 'index.html', admin: 'Admin.html', editor: 'Editor.html' };
+        var mapRoute = { customer: '/customer', garansi: '/garansi', admin: '/admin', editor: '/editor' };
+        return isFile ? (mapFile[webKey] || 'index.html') : (mapRoute[webKey] || '/');
+      }
+      window.openArchieWeb = function(webKey) {
+        var w = window.open(getWebUrl(webKey), 'archie_web_' + webKey);
+        if (w) { try { w.focus(); } catch (_) {} }
+      };
+      document.addEventListener('click', function(e) {
+        var navEl = e.target && e.target.closest ? e.target.closest('[data-archie-nav], a[href="/editor"], a[href="/customer"], a[href="/garansi"]') : null;
+        if (!navEl) return;
+        e.preventDefault();
+        var key = navEl.getAttribute('data-archie-nav');
+        if (!key) {
+          var hr = (navEl.getAttribute('href') || '').replace(/^\//, '');
+          key = hr || 'editor';
+        }
+        window.openArchieWeb(key);
+      });
+    })();
   </script>
 
 </body>
