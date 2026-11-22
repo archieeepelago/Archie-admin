@@ -2,26 +2,7 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta id="archieViewportMeta" name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <script>
-    (function() {
-      try {
-        var isMobile = (window.screen && Math.min(window.screen.width, window.screen.height) < 900) || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
-        if (!isMobile) return;
-        var saved = localStorage.getItem('archie_ui_mode_admin') || 'mac';
-        var vp = document.getElementById('archieViewportMeta') || document.querySelector('meta[name="viewport"]');
-        if (saved === 'mac' && vp) {
-          var targetW = 1080;
-          var scrW = Math.min(window.screen.width || 390, window.innerWidth || 390);
-          var sc = Math.min(1, Math.max(0.25, scrW / targetW));
-          vp.setAttribute('content', 'width=' + targetW + ', initial-scale=' + sc.toFixed(4) + ', minimum-scale=0.25, maximum-scale=3.0, user-scalable=yes, viewport-fit=cover');
-          document.documentElement.classList.add('archie-mac-mobile-mode');
-        } else {
-          document.documentElement.classList.add('archie-compact-mobile-mode');
-        }
-      } catch (e) {}
-    })();
-  </script>
+  <meta name="viewport" content="width=1120, user-scalable=yes, viewport-fit=cover" />
   <title>Archie'pelago — Admin Command Center &amp; Kontrol Garansi</title>
   <!-- ========================================================================= -->
   <!-- LOGO TAB WEBSITE OTOMATIS (DEFAULT SPARXIE + OVERRIDE FILE GITHUB):       -->
@@ -204,10 +185,9 @@
     }
     html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
     button, a, input, select, textarea { touch-action: manipulation; }
+    article[data-arc-card] { touch-action: pan-y; }
     body { padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); }
-    html.archie-mac-mobile-mode body { min-width: 1080px; overflow-x: auto; }
-    html.archie-compact-mobile-mode header .flex-wrap { flex-wrap: nowrap !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-    html.archie-compact-mobile-mode header .flex-wrap::-webkit-scrollbar { display: none; }
+    @media (pointer: coarse) { body { min-width: 1120px; } }
   </style>
 </head>
 <body class="pb-16 relative">
@@ -309,9 +289,6 @@
         <a href="/garansi" data-archie-nav="garansi" class="px-2.5 py-1.5 rounded-full bg-white hover:bg-[#FFF0F6] border border-[#F5B8CE] text-[#7A4961] text-[11px] font-extrabold transition">
           🎫 Garansi
         </a>
-        <button id="archieUiModeToggleBtn" type="button" title="Ganti Tampilan Mode Mac / Mode HP" class="hidden px-2.5 py-1.5 rounded-full bg-[#F5F0FF] hover:bg-[#EAE0FF] border border-[#D4C2F8] text-[#5B21B6] text-[11px] font-black transition cursor-pointer whitespace-nowrap">
-          🖥️ Mode Mac
-        </button>
         <button id="adminLogoutHeaderBtn" type="button" class="px-2.5 py-1.5 rounded-full bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 text-[11px] font-black transition cursor-pointer">
           🚪 Keluar
         </button>
@@ -2299,7 +2276,8 @@ create policy "Allow public read/write orders" on public.orders
         const cwText = buildCopywritingConvertedText(order, activeCw.template, custInputVal, wibMeta, wInfo);
 
         const parsedCust = parseStructuredCustData(custInputVal);
-        const orderPinVal = (typeof getOrderAccessPin === 'function') ? getOrderAccessPin(order) : (order.access_pin || '-');
+        const pinFallbackMatch = rawPlanStr.match(/PIN[:\s]+([A-Za-z0-9]+)/i);
+        const orderPinVal = (typeof getOrderAccessPin === 'function' ? getOrderAccessPin(order) : '') || order.access_pin || (pinFallbackMatch ? pinFallbackMatch[1].trim() : '') || '-';
         const paidMatch = rawPlanStr.match(/PAID_AT:([^|\]]+)/i);
         const paidIsoInfo = (paidMatch && paidMatch[1]) ? paidMatch[1].trim() : (order.paid_at || '');
         const fmtWibShort = (isoStr) => {
@@ -2418,6 +2396,10 @@ create policy "Allow public read/write orders" on public.orders
                     <button type="button" data-action="copy-order-code" data-code="${orderCode}" title="Salin Kode"
                             class="font-mono-code px-2.5 py-0.5 rounded-lg bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066] text-[11px] font-black tracking-wide transition cursor-pointer">
                       ${orderCode} 📋
+                    </button>
+                    <button type="button" data-action="copy-cust-data" data-text="${orderPinVal}" title="Salin PIN Tiket"
+                            class="font-mono-code px-2 py-0.5 rounded-lg bg-white hover:bg-[#FFF0F6] text-[#4A2036] border border-[#F2B8CE] text-[10.5px] font-black tracking-wide transition cursor-pointer">
+                      🔑 PIN: ${orderPinVal}
                     </button>
                     ${statusBadgeHtml}
                     ${h1BadgeHtml}
@@ -2569,32 +2551,74 @@ create policy "Allow public read/write orders" on public.orders
       const code = formatOrderCode(order.id, order);
       const wInfo = parseWarrantyAndDurationFromOrder(order);
       const parsed = parseStructuredCustData(custInputVal);
+      const cleanFhPlan = String((wInfo && wInfo.cleanPlan) ? wInfo.cleanPlan : (order.plan_label || '1 Bulan'))
+        .replace(/\[[^\]]*\]/g, '')
+        .replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi(?:\s*rp[\d.,]+)?)/gi, '')
+        .replace(/\(\s*(?:👑\s*)?(?:donatur|donasi[^)]*)\s*\)/gi, '')
+        .replace(/\s*[•|]\s*(?=[•|]|$)/g, '')
+        .replace(/^[•|,\-\s]+|[•|,\-\s]+$/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim() || '1 Bulan';
+      const cleanFhProduct = String(order.product_name || 'Aplikasi Premium')
+        .replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi(?:\s*rp[\d.,]+)?)/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim() || 'Aplikasi Premium';
+
+      // Pisahkan Tipe Langganan vs Durasi Langganan murni untuk FH
+      const planParts = cleanFhPlan.split(/\s*[•|]\s*/).filter(Boolean);
+      let subscriptionType = '';
+      let durationOnly = cleanFhPlan;
+      if (planParts.length >= 2) {
+        durationOnly = planParts[planParts.length - 1];
+        subscriptionType = planParts.slice(0, -1).join(' • ');
+      } else {
+        const durMatch = cleanFhPlan.match(/(\d+\s*(?:hari|minggu|bulan|tahun|bln|thn|hr|day|month|year)s?)/i);
+        if (durMatch) {
+          durationOnly = durMatch[1].trim();
+          subscriptionType = cleanFhPlan.replace(durMatch[0], '').replace(/[-•|,\s]+$/g, '').replace(/^[-•|,\s]+/g, '').trim();
+        }
+      }
+      if (!subscriptionType) subscriptionType = 'Reguler / Standard';
+
       const condLines = [];
-      if (parsed.device) condLines.push('> ```Device Customer``` : *' + parsed.device + '*');
-      if (parsed.gmail) condLines.push('> ```Gmail Customer``` : `' + parsed.gmail + '`');
-      if (parsed.pass) condLines.push('> ```Password Customer``` : `' + parsed.pass + '`');
-      if (parsed.phone) condLines.push('> ```Nomor Hp Customer``` : `' + parsed.phone + '`');
+      if (parsed.device) condLines.push('> ✦ *Device Customer*  : ' + parsed.device);
+      if (parsed.gmail) condLines.push('> ✦ *Gmail Customer*   : `' + parsed.gmail + '`');
+      if (parsed.pass) condLines.push('> ✦ *Password Customer*: `' + parsed.pass + '`');
+      if (parsed.phone) condLines.push('> ✦ *Nomor Hp Customer*: `' + parsed.phone + '`');
       const condBlock = condLines.length ? condLines.join('\n') : '';
 
       const defaultTpl =
         "Selamat {greeting_wib}, Kakk {fh_name}\n" +
-        "Aku ada pesanan sebagai berikutt:\n" +
-        "> ```Produk/Aplikasi``` : *{product_name}*\n" +
-        "> ```Durasi Langganan``` : *{plan_label}*\n" +
+        "Aku ada pesanan sebagai berikutt:\n\n" +
+        "> ✦ *Produk/Aplikasi*  : {product_name}\n" +
+        "> ✦ *Tipe Langganan*   : {subscription_type}\n" +
+        "> ✦ *Durasi Langganan* : {duration_label}\n" +
         "{customer_input}\n" +
-        "```Kode Tracking``` : *{order_code}*\n\n\n" +
+        "```Kode Tracking : {order_code}```\n\n" +
         "Terima kasih sebelumnyaa Kak {fh_name}! ( ˶˘ ³˘)♡";
 
-      const tpl = (tplStr && String(tplStr).trim()) ? tplStr : defaultTpl;
-      const fhName = (fhObj && fhObj.name) ? fhObj.name : 'FH';
+      let tpl = (tplStr && String(tplStr).trim()) ? String(tplStr) : defaultTpl;
+      // Jika template lama dari Supabase belum pakai format baru (masih backtick di Produk/Aplikasi atau belum ada Tipe Langganan), upgrade otomatis
+      if (!/tipe\s*langganan|\{subscription_type\}|\{tipe_langganan\}/i.test(tpl) || />\s*```Produk\/Aplikasi```/i.test(tpl)) {
+        tpl = defaultTpl;
+      }
+      const rawFhName = (fhObj && fhObj.name) ? String(fhObj.name) : '';
+      const fhName = rawFhName
+        .replace(/^\s*fh\b[\s\-:•|]*/i, '')
+        .replace(/\b(?:fh|supplier)\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
       let rendered = tpl
         .replace(/\{greeting_wib\}|\{waktu\}/gi, wibMeta.greeting)
         .replace(/\{time_wib\}/gi, wibMeta.timeStr)
         .replace(/\{fh_name\}|\{nama\s*fh\}/gi, fhName)
+        .replace(/\b(Kakk?)\s+([,!.\n])/g, '$1$2')
         .replace(/\{order_code\}/gi, code)
-        .replace(/\{customer_name\}/gi, order.initials || 'Customer')
-        .replace(/\{product_name\}/gi, order.product_name || 'Aplikasi Premium')
-        .replace(/\{plan_label\}/gi, wInfo.cleanPlan || '1 Bulan')
+        .replace(/\{customer_name\}/gi, String(order.initials || 'Customer').replace(/\s*👑\s*Donatur/i, '').trim())
+        .replace(/\{product_name\}/gi, cleanFhProduct)
+        .replace(/\{subscription_type\}|\{tipe_langganan\}/gi, subscriptionType)
+        .replace(/\{duration_label\}|\{durasi\}/gi, durationOnly)
+        .replace(/\{plan_label\}/gi, durationOnly)
         .replace(/\{total_price\}/gi, formatRp(order.final_price || 0))
         .replace(/\{device\}/gi, parsed.device || '-')
         .replace(/\{gmail\}/gi, parsed.gmail || '-')
@@ -2633,7 +2657,7 @@ create policy "Allow public read/write orders" on public.orders
 
       const waBase = ['https:/', 'wa.me'].join('/');
 
-      // 4-Slide Navigation (Buttons + Swipe Gesture)
+      // 4-Slide Navigation (Buttons + iPhone Touch Swipe + Mac Trackpad Swipe + Mouse Drag)
       function switchArcSlide(orderId, nextIdx) {
         const clamped = ((nextIdx % 4) + 4) % 4;
         window.__arcSlideState = window.__arcSlideState || {};
@@ -2654,22 +2678,69 @@ create policy "Allow public read/write orders" on public.orders
         });
       });
       container.querySelectorAll('article[data-arc-card]').forEach(card => {
-        let startX = 0, startY = 0;
+        const id = card.getAttribute('data-arc-card');
+        let startX = 0, startY = 0, trackingTouch = false;
+        let dragX = 0, dragY = 0, trackingMouse = false;
+        let lastWheelSwipeAt = 0;
+        const isEditable = (el) => el && el.closest && !!el.closest('input, textarea, select, [contenteditable]');
+
         card.addEventListener('touchstart', (e) => {
-          if (!e.touches || !e.touches[0]) return;
+          if (!e.touches || !e.touches[0] || isEditable(e.target)) { trackingTouch = false; return; }
+          trackingTouch = true;
           startX = e.touches[0].clientX;
           startY = e.touches[0].clientY;
         }, { passive: true });
+        card.addEventListener('touchmove', (e) => {
+          if (!trackingTouch || !e.touches || !e.touches[0]) return;
+          const dx = e.touches[0].clientX - startX;
+          const dy = e.touches[0].clientY - startY;
+          if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.1) {
+            if (e.cancelable) e.preventDefault();
+          }
+        }, { passive: false });
         card.addEventListener('touchend', (e) => {
-          if (!e.changedTouches || !e.changedTouches[0]) return;
+          if (!trackingTouch || !e.changedTouches || !e.changedTouches[0]) return;
+          trackingTouch = false;
           const dx = e.changedTouches[0].clientX - startX;
           const dy = e.changedTouches[0].clientY - startY;
-          if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.4) {
-            const id = card.getAttribute('data-arc-card');
+          if (Math.abs(dx) > 28 && Math.abs(dx) > Math.abs(dy) * 1.05) {
             const cur = Number((window.__arcSlideState && window.__arcSlideState[id]) || 0);
             switchArcSlide(id, cur + (dx < 0 ? 1 : -1));
           }
         }, { passive: true });
+
+        // MacBook trackpad 2-finger horizontal swipe
+        card.addEventListener('wheel', (e) => {
+          if (isEditable(e.target)) return;
+          if (Math.abs(e.deltaX) > 26 && Math.abs(e.deltaX) > Math.abs(e.deltaY) * 1.25) {
+            const now = Date.now();
+            if (now - lastWheelSwipeAt < 420) return;
+            lastWheelSwipeAt = now;
+            e.preventDefault();
+            const cur = Number((window.__arcSlideState && window.__arcSlideState[id]) || 0);
+            switchArcSlide(id, cur + (e.deltaX > 0 ? 1 : -1));
+          }
+        }, { passive: false });
+
+        // Desktop mouse click-drag horizontal swipe
+        card.addEventListener('mousedown', (e) => {
+          if (e.button !== 0 || isEditable(e.target) || (e.target && e.target.closest && e.target.closest('button, a'))) return;
+          trackingMouse = true;
+          dragX = e.clientX;
+          dragY = e.clientY;
+        });
+        card.addEventListener('mouseup', (e) => {
+          if (!trackingMouse) return;
+          trackingMouse = false;
+          const sel = window.getSelection ? String(window.getSelection() || '') : '';
+          if (sel.length > 0) return;
+          const dx = e.clientX - dragX;
+          const dy = e.clientY - dragY;
+          if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+            const cur = Number((window.__arcSlideState && window.__arcSlideState[id]) || 0);
+            switchArcSlide(id, cur + (dx < 0 ? 1 : -1));
+          }
+        });
       });
 
       // Copy Customer Input Data
@@ -5548,19 +5619,6 @@ create policy "Allow public read/write orders" on public.orders
         img.src = iconCandidates[i];
       })(0);
 
-      // Mac-like iPhone UI toggle (visible only on mobile/iPhone)
-      var isMobileDev = (window.screen && Math.min(window.screen.width, window.screen.height) < 900) || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent || '');
-      var uiBtn = document.getElementById('archieUiModeToggleBtn');
-      if (isMobileDev && uiBtn) {
-        var curMode = localStorage.getItem('archie_ui_mode_admin') || 'mac';
-        uiBtn.classList.remove('hidden');
-        uiBtn.textContent = (curMode === 'mac') ? '🖥️ Mode Mac' : '📱 Mode HP';
-        uiBtn.addEventListener('click', function() {
-          var next = (localStorage.getItem('archie_ui_mode_admin') || 'mac') === 'mac' ? 'mobile' : 'mac';
-          localStorage.setItem('archie_ui_mode_admin', next);
-          window.location.reload();
-        });
-      }
     })();
   </script>
 
