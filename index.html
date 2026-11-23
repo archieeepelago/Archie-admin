@@ -4645,7 +4645,7 @@ create policy "Allow public read/write orders" on public.orders
       var key = sbAnonKey || window.ARCHIE_SUPABASE_ANON_KEY || '';
       if (!url || !key) return localCfg;
       try {
-        var resp = await fetch(url + '/rest/v1/store_cms_config?id=eq.live&select=config_json,updated_at&_t=' + Date.now(), {
+        var resp = await fetch(url + '/rest/v1/store_cms_config?id=eq.live&select=config_json,updated_at', {
           cache: 'no-store',
           headers: {
             'apikey': key,
@@ -4668,9 +4668,15 @@ create policy "Allow public read/write orders" on public.orders
   };
   // Auto-sync live CMS dari Web Editor ke Web Admin saat dibuka & tiap 30 detik
   window.ArchieLiveCms.current = window.ArchieLiveCms.getCached();
+  window.__lastAdminCmsUpdatedAt = null;
   function syncAdminLiveCms() {
-    window.ArchieLiveCms.fetchLive(window.ARCHIE_SUPABASE_URL, window.ARCHIE_SUPABASE_ANON_KEY).then(function() {
-      if (typeof renderOrdersList === 'function') renderOrdersList(false);
+    window.ArchieLiveCms.fetchLive(window.ARCHIE_SUPABASE_URL, window.ARCHIE_SUPABASE_ANON_KEY).then(function(cfg) {
+      var nextUpd = (cfg && cfg.updatedAt) ? String(cfg.updatedAt) : '';
+      if (nextUpd && nextUpd !== window.__lastAdminCmsUpdatedAt) {
+        window.__lastAdminCmsUpdatedAt = nextUpd;
+        var busy = (typeof isAdminTypingInInput === 'function' && isAdminTypingInInput()) || (typeof hasActiveEditsInOrdersContainer === 'function' && hasActiveEditsInOrdersContainer());
+        if (typeof renderOrdersList === 'function' && !busy) renderOrdersList(true);
+      }
     });
   }
   setTimeout(syncAdminLiveCms, 120);
