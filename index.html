@@ -2547,7 +2547,7 @@ create policy "Allow public read/write orders" on public.orders
           { idx: 0, lbl: '1 • Info Cust' },
           { idx: 1, lbl: '2 • Converter FH' },
           { idx: 2, lbl: '3 • Web Garansi' },
-          { idx: 3, lbl: '4 • Copy-Writing' }
+          { idx: 3, lbl: '4 • Convert & Template' }
         ];
 
         const isH1Expiring = (expMs > Date.now() && (expMs - Date.now()) <= 86400000);
@@ -2693,8 +2693,8 @@ create policy "Allow public read/write orders" on public.orders
               <!-- SLIDE 4: COPY-WRITING MULTI-OCCASION -->
               <div data-arc-slide-panel="${order.id}:3" class="${curSlide === 3 ? '' : 'hidden'} rounded-2xl ${pTheme.panelBg} border p-3 space-y-2.5">
                 <div class="flex flex-wrap items-center justify-between gap-1.5">
-                  <span class="text-[11px] font-black text-[#4A2036]">✍️ Copy-Writing Multi-Occasion</span>
-                  <span class="text-[9.5px] font-bold text-[#8E5670]">Pilih tombol untuk ganti konteks convert</span>
+                  <span class="text-[11px] font-black text-[#4A2036]">🔄 Convert & Template Multi-Occasion</span>
+                  <span class="text-[9.5px] font-bold text-[#8E5670]">Paste info dari FH di kiri → otomatis jadi template & copas murni</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5">
                   ${cwList.map((cw, cIdx) => `
@@ -2705,16 +2705,20 @@ create policy "Allow public read/write orders" on public.orders
                   `).join('')}
                 </div>
                 ${(() => {
-                  const isAccConv = activeCw && (activeCw.id === 'cw_handover' || activeCw.id === 'cw_renew' || /kirim\s*akun|renewal/i.test(String(activeCw.label || '')) || /\{email\}|\{password\}/i.test(String(activeCw.template || '')));
                   const rawAccVal = (window.__arcFhRawAccount && window.__arcFhRawAccount[order.id]) || '';
                   const parsedAcc = parseRawAccountFromFh(rawAccVal);
                   const curSvc = (window.__arcCwServiceMode && window.__arcCwServiceMode[order.id]) || 'SHARING';
-                  if (!isAccConv) {
-                    return `<textarea data-cw-output="${order.id}" rows="5" class="w-full px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${cwText.replace(/</g, '&lt;')}</textarea>`;
-                  }
+                  const pureRow = (field, icon, label, val) => `
+                    <div class="flex items-center gap-1.5 bg-white rounded-lg border border-[#F5B8CE] px-2 py-1">
+                      <span class="text-[9.5px] font-black text-[#8E5670] shrink-0 w-[62px]">${icon} ${label}</span>
+                      <input type="text" readonly value="${String(val || '').replace(/"/g, '&quot;')}" placeholder="Belum ada..." class="flex-1 min-w-0 bg-transparent text-[10.5px] font-mono font-bold text-[#4A2036] focus:outline-none" />
+                      <button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="${field}" class="px-2 py-0.5 rounded-md ${val ? 'bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066]' : 'bg-[#FFF0F6] text-[#9A637B]'} text-[9.5px] font-black shrink-0 cursor-pointer">
+                        Copy
+                      </button>
+                    </div>`;
                   return `
                     <div class="space-y-2">
-                      <div class="flex flex-wrap items-center justify-between gap-1.5 bg-white/80 px-2.5 py-1.5 rounded-xl border border-[#F5B8CE]">
+                      <div class="flex flex-wrap items-center justify-between gap-1.5 bg-white/85 px-2.5 py-1.5 rounded-xl border border-[#F5B8CE]">
                         <span class="text-[9.5px] font-black text-[#8E5670] uppercase">Jenis Layanan:</span>
                         <div class="flex flex-wrap gap-1">
                           ${[
@@ -2726,24 +2730,25 @@ create policy "Allow public read/write orders" on public.orders
                       </div>
 
                       <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
-                        <div class="md:col-span-5 space-y-1.5">
-                          <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">📥 Paste Format Mentah dari FH:</div>
-                          <textarea data-fh-raw-account="${order.id}" rows="5" placeholder="Paste balasan akun dari FH di sini (bebas format)&#10;Contoh:&#10;Email: budi@gmail.com&#10;Pass: rahasia123&#10;Profil: 2 | PIN: 1234" class="w-full px-2.5 py-2 rounded-xl bg-[#FFF8FB] border border-[#F5B8CE] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${String(rawAccVal).replace(/</g, '&lt;')}</textarea>
-                          <div data-acc-chips="${order.id}" class="flex flex-wrap gap-1.5">
-                            <button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="email" class="px-2.5 py-1 rounded-lg ${parsedAcc.email ? 'bg-[#4A2036] text-[#FFE066]' : 'bg-white text-[#9A637B] border border-[#EAD0DC]'} text-[10px] font-black cursor-pointer">
-                              📧 Copy Email Murni${parsedAcc.email ? ' ✓' : ''}
-                            </button>
-                            <button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="password" class="px-2.5 py-1 rounded-lg ${parsedAcc.password ? 'bg-[#D83162] text-white' : 'bg-white text-[#9A637B] border border-[#EAD0DC]'} text-[10px] font-black cursor-pointer">
-                              🔑 Copy Password Murni${parsedAcc.password ? ' ✓' : ''}
-                            </button>
-                            ${parsedAcc.profile ? `<button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="profile" class="px-2 py-1 rounded-lg bg-purple-700 text-white text-[10px] font-black cursor-pointer">👤 Copy Profil ✓</button>` : ''}
-                            ${parsedAcc.pin ? `<button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="pin" class="px-2 py-1 rounded-lg bg-amber-600 text-white text-[10px] font-black cursor-pointer">🔢 Copy PIN ✓</button>` : ''}
-                            ${parsedAcc.link ? `<button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="link" class="px-2 py-1 rounded-lg bg-teal-600 text-white text-[10px] font-black cursor-pointer">🔗 Copy Link ✓</button>` : ''}
+                        <div class="md:col-span-5 space-y-2">
+                          <div class="space-y-1">
+                            <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">📥 Paste Mentah dari FH (Bebas Format):</div>
+                            <textarea data-fh-raw-account="${order.id}" rows="4" placeholder="Paste balasan akun dari FH di sini...&#10;Contoh:&#10;Email: budi@gmail.com&#10;Pass: rahasia123&#10;Profil: 2 | PIN: 1234" class="w-full px-2.5 py-2 rounded-xl bg-[#FFF8FB] border border-[#F5B8CE] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${String(rawAccVal).replace(/</g, '&lt;')}</textarea>
+                          </div>
+                          <div class="space-y-1">
+                            <div class="text-[9px] font-black uppercase tracking-wider text-[#8E5670]">✂️ Copas Individual Murni (Tanpa Label & Simbol):</div>
+                            <div data-acc-chips="${order.id}" class="space-y-1">
+                              ${pureRow('email', '📧', 'Email', parsedAcc.email)}
+                              ${pureRow('password', '🔑', 'Password', parsedAcc.password)}
+                              ${parsedAcc.profile ? pureRow('profile', '👤', 'Profil', parsedAcc.profile) : ''}
+                              ${parsedAcc.pin ? pureRow('pin', '🔢', 'PIN', parsedAcc.pin) : ''}
+                              ${parsedAcc.link ? pureRow('link', '🔗', 'Link', parsedAcc.link) : ''}
+                            </div>
                           </div>
                         </div>
-                        <div class="md:col-span-7 space-y-1.5">
-                          <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">📤 Hasil Convert Siap Kirim ke Customer:</div>
-                          <textarea data-cw-output="${order.id}" rows="6" class="w-full px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${cwText.replace(/</g, '&lt;')}</textarea>
+                        <div class="md:col-span-7 space-y-1.5 flex flex-col">
+                          <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">📤 Hasil Convert Siap Kirim (${activeCw.icon || '✨'} ${activeCw.label || 'Template'}):</div>
+                          <textarea data-cw-output="${order.id}" rows="8" class="w-full flex-1 px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${cwText.replace(/</g, '&lt;')}</textarea>
                         </div>
                       </div>
                     </div>
@@ -3434,12 +3439,18 @@ create policy "Allow public read/write orders" on public.orders
         const chipsWrap = container.querySelector(`[data-acc-chips="${id}"]`);
         if (chipsWrap) {
           const parsedAcc = parseRawAccountFromFh(window.__arcFhRawAccount[id] || '');
+          const mkRow = (field, icon, label, val) => `
+            <div class="flex items-center gap-1.5 bg-white rounded-lg border border-[#F5B8CE] px-2 py-1">
+              <span class="text-[9.5px] font-black text-[#8E5670] shrink-0 w-[62px]">${icon} ${label}</span>
+              <input type="text" readonly value="${String(val || '').replace(/"/g, '&quot;')}" placeholder="Belum ada..." class="flex-1 min-w-0 bg-transparent text-[10.5px] font-mono font-bold text-[#4A2036] focus:outline-none" />
+              <button type="button" data-action="copy-pure-field" data-id="${id}" data-field="${field}" class="px-2 py-0.5 rounded-md ${val ? 'bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066]' : 'bg-[#FFF0F6] text-[#9A637B]'} text-[9.5px] font-black shrink-0 cursor-pointer">Copy</button>
+            </div>`;
           chipsWrap.innerHTML =
-            `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="email" class="px-2.5 py-1 rounded-lg ${parsedAcc.email ? 'bg-[#4A2036] text-[#FFE066]' : 'bg-white text-[#9A637B] border border-[#EAD0DC]'} text-[10px] font-black cursor-pointer">📧 Copy Email Murni${parsedAcc.email ? ' ✓' : ''}</button>` +
-            `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="password" class="px-2.5 py-1 rounded-lg ${parsedAcc.password ? 'bg-[#D83162] text-white' : 'bg-white text-[#9A637B] border border-[#EAD0DC]'} text-[10px] font-black cursor-pointer">🔑 Copy Password Murni${parsedAcc.password ? ' ✓' : ''}</button>` +
-            (parsedAcc.profile ? `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="profile" class="px-2 py-1 rounded-lg bg-purple-700 text-white text-[10px] font-black cursor-pointer">👤 Copy Profil ✓</button>` : '') +
-            (parsedAcc.pin ? `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="pin" class="px-2 py-1 rounded-lg bg-amber-600 text-white text-[10px] font-black cursor-pointer">🔢 Copy PIN ✓</button>` : '') +
-            (parsedAcc.link ? `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="link" class="px-2 py-1 rounded-lg bg-teal-600 text-white text-[10px] font-black cursor-pointer">🔗 Copy Link ✓</button>` : '');
+            mkRow('email', '📧', 'Email', parsedAcc.email) +
+            mkRow('password', '🔑', 'Password', parsedAcc.password) +
+            (parsedAcc.profile ? mkRow('profile', '👤', 'Profil', parsedAcc.profile) : '') +
+            (parsedAcc.pin ? mkRow('pin', '🔢', 'PIN', parsedAcc.pin) : '') +
+            (parsedAcc.link ? mkRow('link', '🔗', 'Link', parsedAcc.link) : '');
           bindPureCopyButtons(chipsWrap);
         }
       };
@@ -5185,6 +5196,7 @@ create policy "Allow public read/write orders" on public.orders
       saveBtnText: "📸 Simpan Gambar Struk (Ke Galeri HP)"
     },
     adminUi: {
+      templateSchemaVersion: 2,
       fhDirectory: [],
       fhOrderTemplate:
         "Selamatt {greeting_wib}, Kakk {fh_name}\n" +
@@ -5291,6 +5303,14 @@ create policy "Allow public read/write orders" on public.orders
         }
       }
     });
+    if (out && out.adminUi && base && base.adminUi && Number((over && over.adminUi && over.adminUi.templateSchemaVersion) || 0) < 2) {
+      out.adminUi.templateSchemaVersion = 2;
+      out.adminUi.fhOrderTemplate = base.adminUi.fhOrderTemplate;
+      out.adminUi.copywritingTemplates = JSON.parse(JSON.stringify(base.adminUi.copywritingTemplates || []));
+      out.adminUi.waHandoverTemplate = base.adminUi.waHandoverTemplate;
+      out.adminUi.quickChatPendingTpl = base.adminUi.quickChatPendingTpl;
+      out.adminUi.quickChatPaidTpl = base.adminUi.quickChatPaidTpl;
+    }
     return out;
   }
 
