@@ -1138,7 +1138,7 @@ create policy "Allow public read/write orders" on public.orders
       const metaOuter = rawPlan.match(/\[GARANSI:([^\]]+)\]/i);
       if (metaOuter && metaOuter[1]) {
         const parts = metaOuter[1].split('|');
-        if (parts[0] && ['UNCLAIMED', 'CLAIMED', 'USED'].includes(parts[0].trim().toUpperCase())) {
+        if (parts[0] && ['UNCLAIMED', 'CLAIMED', 'USED', 'VOID'].includes(parts[0].trim().toUpperCase())) {
           warrantyStatus = parts[0].trim().toUpperCase();
         }
         parts.forEach(p => {
@@ -1193,7 +1193,7 @@ create policy "Allow public read/write orders" on public.orders
         preservedMsg = `|MSG:${encodeURIComponent(String(sweetNote).trim())}`;
       }
       const base = rawStr.replace(/\s*\[GARANSI:[^\]]+\]/gi, '').trim();
-      const st = ['UNCLAIMED', 'CLAIMED', 'USED'].includes(warrantyStatus) ? warrantyStatus : 'UNCLAIMED';
+      const st = ['UNCLAIMED', 'CLAIMED', 'USED', 'VOID'].includes(warrantyStatus) ? warrantyStatus : 'UNCLAIMED';
       const exp = Number(expiresAtMs) || (Date.now() + 30 * 24 * 3600 * 1000);
       const codeSuffix = orderCode ? `|CODE:${orderCode}` : '';
       const extraSuffix = preservedExtras.length ? ('|' + preservedExtras.join('|')) : '';
@@ -2333,6 +2333,10 @@ create policy "Allow public read/write orders" on public.orders
                         class="px-2.5 py-1 rounded-xl text-[10.5px] font-black transition cursor-pointer ${wInfo.warrantyStatus === 'USED' ? 'bg-rose-600 text-white shadow-xs' : 'text-rose-800 hover:bg-white/60'}">
                   🔴 Terpakai
                 </button>
+                <button type="button" data-action="set-warranty-stamp" data-id="${order.id}" data-stamp="VOID"
+                        class="px-2.5 py-1 rounded-xl text-[10.5px] font-black transition cursor-pointer ${wInfo.warrantyStatus === 'VOID' ? 'bg-slate-900 text-rose-300 shadow-xs' : 'text-slate-700 hover:bg-white/60'}">
+                  🚫 Void
+                </button>
               </div>
 
               <div class="flex flex-wrap items-center gap-1.5">
@@ -2646,6 +2650,15 @@ create policy "Allow public read/write orders" on public.orders
                     <div class="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">${fhLeftListHtml}</div>
                   </div>
                   <div class="md:col-span-7 flex flex-col gap-2">
+                    <div class="space-y-1">
+                      <div class="flex flex-wrap items-center justify-between gap-1">
+                        <span class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">Catatan Opsional untuk FH:</span>
+                        <div class="flex flex-wrap gap-1">
+                          ${['Urgent', 'Akun Baru', 'Invite Email', 'Perpanjangan'].map(chip => `<button type="button" data-action="fh-note-chip" data-id="${order.id}" data-chip="${chip}" class="px-1.5 py-0.5 rounded-md bg-white hover:bg-[#FFE0EC] border border-[#F5B8CE] text-[9px] font-extrabold text-[#9B2358] cursor-pointer">+ ${chip}</button>`).join('')}
+                        </div>
+                      </div>
+                      <input type="text" data-fh-note-input="${order.id}" value="${String((window.__arcFhNotes && window.__arcFhNotes[order.id]) || '').replace(/"/g, '&quot;')}" placeholder="Opsional: misal Urgent, Akun Baru, Invite Email..." class="w-full px-2.5 py-1 rounded-lg bg-white border border-[#EAD0DC] text-[10.5px] font-bold text-[#4A2036] focus:outline-none focus:border-[#D83162]" />
+                    </div>
                     <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">Hasil Teks Otomatis (Realtime WIB):</div>
                     <textarea data-fh-output="${order.id}" rows="6" class="w-full px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${fhOrderText.replace(/</g, '&lt;')}</textarea>
                     <div class="flex flex-wrap items-center gap-1.5">
@@ -2691,7 +2704,51 @@ create policy "Allow public read/write orders" on public.orders
                     </button>
                   `).join('')}
                 </div>
-                <textarea data-cw-output="${order.id}" rows="5" class="w-full px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${cwText.replace(/</g, '&lt;')}</textarea>
+                ${(() => {
+                  const isAccConv = activeCw && (activeCw.id === 'cw_handover' || activeCw.id === 'cw_renew' || /kirim\s*akun|renewal/i.test(String(activeCw.label || '')) || /\{email\}|\{password\}/i.test(String(activeCw.template || '')));
+                  const rawAccVal = (window.__arcFhRawAccount && window.__arcFhRawAccount[order.id]) || '';
+                  const parsedAcc = parseRawAccountFromFh(rawAccVal);
+                  const curSvc = (window.__arcCwServiceMode && window.__arcCwServiceMode[order.id]) || 'SHARING';
+                  if (!isAccConv) {
+                    return `<textarea data-cw-output="${order.id}" rows="5" class="w-full px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${cwText.replace(/</g, '&lt;')}</textarea>`;
+                  }
+                  return `
+                    <div class="space-y-2">
+                      <div class="flex flex-wrap items-center justify-between gap-1.5 bg-white/80 px-2.5 py-1.5 rounded-xl border border-[#F5B8CE]">
+                        <span class="text-[9.5px] font-black text-[#8E5670] uppercase">Jenis Layanan:</span>
+                        <div class="flex flex-wrap gap-1">
+                          ${[
+                            { id: 'SHARING', lbl: '👥 Akun Sharing' },
+                            { id: 'PRIVATE', lbl: '🔐 Akun Private' },
+                            { id: 'INVITE_EMAIL', lbl: '✉️ Invite Email' }
+                          ].map(sm => `<button type="button" data-action="set-cw-service-mode" data-id="${order.id}" data-mode="${sm.id}" class="px-2 py-0.5 rounded-lg text-[9.5px] font-black cursor-pointer ${curSvc === sm.id ? 'bg-[#4A2036] text-[#FFE066]' : 'bg-[#FFF0F6] text-[#7A4961] border border-[#F5B8CE]'}">${sm.lbl}</button>`).join('')}
+                        </div>
+                      </div>
+
+                      <div class="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+                        <div class="md:col-span-5 space-y-1.5">
+                          <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">📥 Paste Format Mentah dari FH:</div>
+                          <textarea data-fh-raw-account="${order.id}" rows="5" placeholder="Paste balasan akun dari FH di sini (bebas format)&#10;Contoh:&#10;Email: budi@gmail.com&#10;Pass: rahasia123&#10;Profil: 2 | PIN: 1234" class="w-full px-2.5 py-2 rounded-xl bg-[#FFF8FB] border border-[#F5B8CE] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${String(rawAccVal).replace(/</g, '&lt;')}</textarea>
+                          <div data-acc-chips="${order.id}" class="flex flex-wrap gap-1.5">
+                            <button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="email" class="px-2.5 py-1 rounded-lg ${parsedAcc.email ? 'bg-[#4A2036] text-[#FFE066]' : 'bg-white text-[#9A637B] border border-[#EAD0DC]'} text-[10px] font-black cursor-pointer">
+                              📧 Copy Email Murni${parsedAcc.email ? ' ✓' : ''}
+                            </button>
+                            <button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="password" class="px-2.5 py-1 rounded-lg ${parsedAcc.password ? 'bg-[#D83162] text-white' : 'bg-white text-[#9A637B] border border-[#EAD0DC]'} text-[10px] font-black cursor-pointer">
+                              🔑 Copy Password Murni${parsedAcc.password ? ' ✓' : ''}
+                            </button>
+                            ${parsedAcc.profile ? `<button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="profile" class="px-2 py-1 rounded-lg bg-purple-700 text-white text-[10px] font-black cursor-pointer">👤 Copy Profil ✓</button>` : ''}
+                            ${parsedAcc.pin ? `<button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="pin" class="px-2 py-1 rounded-lg bg-amber-600 text-white text-[10px] font-black cursor-pointer">🔢 Copy PIN ✓</button>` : ''}
+                            ${parsedAcc.link ? `<button type="button" data-action="copy-pure-field" data-id="${order.id}" data-field="link" class="px-2 py-1 rounded-lg bg-teal-600 text-white text-[10px] font-black cursor-pointer">🔗 Copy Link ✓</button>` : ''}
+                          </div>
+                        </div>
+                        <div class="md:col-span-7 space-y-1.5">
+                          <div class="text-[9.5px] font-black uppercase tracking-wider text-[#8E5670]">📤 Hasil Convert Siap Kirim ke Customer:</div>
+                          <textarea data-cw-output="${order.id}" rows="6" class="w-full px-3 py-2 rounded-xl bg-white border border-[#EAD0DC] text-[11px] font-mono text-[#4A2036] leading-relaxed focus:outline-none focus:border-[#D83162]">${cwText.replace(/</g, '&lt;')}</textarea>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                })()}
                 <div class="flex flex-wrap items-center gap-1.5">
                   <button type="button" data-action="copy-cw-text" data-id="${order.id}" class="flex-1 py-1.5 px-3 rounded-xl bg-[#4A2036] hover:bg-[#D83162] text-[#FFE066] text-[10.5px] font-black transition cursor-pointer">📋 Salin Copy-Writing</button>
                   <button type="button" data-action="open-cw-wa" data-id="${order.id}" class="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10.5px] font-black transition cursor-pointer">📲 Buka di WA</button>
@@ -2830,6 +2887,22 @@ create policy "Allow public read/write orders" on public.orders
       const totalPriceStr = formatRp(o.final_price || o.base_price || 0);
       const appTncStr = resolveAppTncForOrder(o);
 
+      const acc = opts.parsedAccount || {};
+      const accEmail = acc.email || parsed.gmail || '-';
+      const accPass = acc.password || parsed.pass || '-';
+      const accExtraLines = [];
+      if (acc.profile) accExtraLines.push(`> Profil: \`${acc.profile}\``);
+      if (acc.pin) accExtraLines.push(`> PIN Profil: \`${acc.pin}\``);
+      if (acc.link) accExtraLines.push(`> Link: ${acc.link}`);
+      if (Array.isArray(acc.extras) && acc.extras.length) {
+        acc.extras.forEach(x => accExtraLines.push(`> ${x}`));
+      }
+      if (opts.serviceMode === 'INVITE_EMAIL' && !acc.link && accEmail !== '-') {
+        accExtraLines.push('> Metode: Invite langsung ke email kakak (cek inbox/spam)');
+      }
+      const extraAccBlock = accExtraLines.join('\n');
+      const fhNoteVal = String(opts.fhNote || '').trim();
+
       let out = String(tplStr || '')
         .replace(/\{greeting_wib\}|\{waktu\}/gi, wibMeta.greeting || 'Pagi')
         .replace(/\{time_wib\}|\{jam\}/gi, wibMeta.timeStr || '-')
@@ -2845,17 +2918,19 @@ create policy "Allow public read/write orders" on public.orders
         .replace(/\{discount_info\}|\{diskon\}/gi, discInfo)
         .replace(/\{discount_pct\}/gi, `${discPct}%`)
         .replace(/\{saved_amount\}/gi, formatRp(savedAmt))
-        .replace(/\{device\}/gi, parsed.device || '-')
-        .replace(/\{gmail\}/gi, parsed.gmail || '-')
-        .replace(/\{password\}/gi, parsed.pass || '-')
-        .replace(/\{phone\}/gi, parsed.phone || '-')
+        .replace(/\{device\}|\{device_customer\}/gi, parsed.device || '-')
+        .replace(/\{email\}|\{gmail\}|\{email_customer\}/gi, accEmail)
+        .replace(/\{password\}|\{password_email_customer\}/gi, accPass)
+        .replace(/\{phone\}|\{nomor_customer\}/gi, parsed.phone || '-')
+        .replace(/\{fh_note\}|\{catatan_fh\}/gi, fhNoteVal || '-')
+        .replace(/\{extra_account_info\}\n?/gi, extraAccBlock ? (extraAccBlock + '\n') : '')
         .replace(/\{warranty_url\}|\{link_garansi\}/gi, wUrl)
         .replace(/\{pin\}|\{access_pin\}/gi, pin)
         .replace(/\{exp_date\}|\{expired\}|\{tanggal_expired\}/gi, expStr)
         .replace(/\{app_tnc\}|\{tnc\}/gi, appTncStr);
 
       if (opts.condBlock !== undefined) {
-        out = out.replace(/\{customer_input\}\n?|\{data_customer\}\n?/gi, opts.condBlock ? (opts.condBlock + '\n\n') : '\n');
+        out = out.replace(/\{customer_input\}\n?|\{data_customer\}\n?/gi, opts.condBlock ? (opts.condBlock + '\n') : '');
       } else {
         out = out.replace(/\{customer_input\}|\{data_customer\}/gi, rawCustInput || '-');
       }
@@ -2898,24 +2973,26 @@ create policy "Allow public read/write orders" on public.orders
       }
       if (!subscriptionType) subscriptionType = 'Reguler / Standard';
 
+      const fhNoteStr = (window.__arcFhNotes && window.__arcFhNotes[order.id]) ? String(window.__arcFhNotes[order.id]).trim() : '';
       const condLines = [];
-      if (parsed.device) condLines.push('```Device Customer``` : *' + parsed.device + '*');
-      if (parsed.gmail) condLines.push('```Gmail Customer``` : `' + parsed.gmail + '`');
-      if (parsed.pass) condLines.push('```Password Customer``` : `' + parsed.pass + '`');
-      if (parsed.phone) condLines.push('```Nomor Hp Customer``` : `' + parsed.phone + '`');
+      if (parsed.device) condLines.push('```Device``` : *' + parsed.device + '*');
+      if (parsed.gmail) condLines.push('```Email``` : *' + parsed.gmail + '*');
+      if (parsed.pass) condLines.push('```Password``` : *' + parsed.pass + '*');
+      if (parsed.phone) condLines.push('```Nomor``` : *' + parsed.phone + '*');
+      if (fhNoteStr) condLines.push('```Catatan``` : *' + fhNoteStr + '*');
       const condBlock = condLines.length ? condLines.join('\n') : '';
 
       const defaultTpl =
-        "Selamat {greeting_wib}, Kakk {fh_name}\n" +
+        "Selamatt {greeting_wib}, Kakk {fh_name}\n" +
         "Aku ada pesanan sebagai berikutt:\n\n" +
         "```Produk/Aplikasi``` : *{product_name}*\n" +
         "```Tipe Langganan``` : *{subscription_type}*\n" +
         "```Durasi Langganan``` : *{duration_label}*\n" +
         "{customer_input}\n" +
-        "> ```Kode Tracking``` : *{order_code}*\n\n\n" +
+        "> ```Kode Tracking``` : *{order_code}*\n\n" +
         "Terima kasih sebelumnyaa Kak {fh_name}! ( ˶˘ ³˘)♡";
 
-      let tpl = (tplStr && String(tplStr).trim()) ? String(tplStr) : defaultTpl;
+      let tpl = (fhObj && fhObj.customTemplate && String(fhObj.customTemplate).trim()) ? String(fhObj.customTemplate) : ((tplStr && String(tplStr).trim()) ? String(tplStr) : defaultTpl);
       // Upgrade otomatis template lama agar hanya Kode Tracking yang pakai quote (>) dan sudah ada Tipe Langganan
       if (!/tipe\s*langganan|\{subscription_type\}|\{tipe_langganan\}/i.test(tpl) || />\s*(?:```Produk\/Aplikasi```|✦)/i.test(tpl)) {
         tpl = defaultTpl;
@@ -2936,7 +3013,104 @@ create policy "Allow public read/write orders" on public.orders
       });
     }
 
+    function parseRawAccountFromFh(rawText) {
+      const text = String(rawText || '').trim();
+      const out = { email: '', password: '', profile: '', pin: '', link: '', extras: [] };
+      if (!text) return out;
+      const cleanVal = (v) => String(v || '')
+        .replace(/^[\s:=>•\-*`"'~]+/, '')
+        .replace(/[\s`"'*]+$/, '')
+        .replace(/`/g, '')
+        .replace(/\*/g, '')
+        .trim();
+
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const usedIdx = new Set();
+
+      lines.forEach((line, idx) => {
+        const plain = line.replace(/^[>\s•\-*]+/, '').trim();
+        let m;
+        if (!out.email && (m = plain.match(/^(?:e-?mail|gmail|akun|user(?:name)?|login|id)\s*[:=\-]\s*(.+)$/i))) {
+          out.email = cleanVal(m[1]);
+          usedIdx.add(idx);
+          return;
+        }
+        if (!out.password && (m = plain.match(/^(?:pass(?:word)?|pw|sandi|kata\s*sandi)\s*[:=\-]\s*(.+)$/i))) {
+          out.password = cleanVal(m[1]);
+          usedIdx.add(idx);
+          return;
+        }
+        if (!out.profile && (m = plain.match(/^(?:profil(?:e)?|slot|nama\s*profil)\s*[:=\-]\s*(.+)$/i))) {
+          out.profile = cleanVal(m[1]);
+          usedIdx.add(idx);
+          return;
+        }
+        if (!out.pin && (m = plain.match(/^(?:pin(?:\s*profil)?|kode\s*pin)\s*[:=\-]\s*(.+)$/i))) {
+          out.pin = cleanVal(m[1]);
+          usedIdx.add(idx);
+          return;
+        }
+        if (!out.link && (m = plain.match(/^(?:link(?:\s*invite)?|url|invite)\s*[:=\-]\s*(.+)$/i))) {
+          out.link = cleanVal(m[1]);
+          usedIdx.add(idx);
+          return;
+        }
+        // Inline email detection
+        if (!out.email && (m = plain.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/))) {
+          out.email = cleanVal(m[0]);
+          usedIdx.add(idx);
+          return;
+        }
+        // Inline URL detection
+        if (!out.link && (m = plain.match(/https?:\/\/\S+/i))) {
+          out.link = cleanVal(m[0]);
+          usedIdx.add(idx);
+          return;
+        }
+      });
+
+      // Fallback: if email found on line N and password empty, take next unused short line as password
+      if (out.email && !out.password) {
+        for (let i = 0; i < lines.length; i++) {
+          if (!usedIdx.has(i)) {
+            const candidate = cleanVal(lines[i].replace(/^[>\s•\-*]+/, ''));
+            if (candidate && !candidate.includes(' ') && candidate.length >= 3 && candidate.length <= 64) {
+              out.password = candidate;
+              usedIdx.add(i);
+              break;
+            }
+          }
+        }
+      }
+
+      // Collect any remaining non-empty info lines
+      lines.forEach((line, idx) => {
+        if (!usedIdx.has(idx)) {
+          const cleaned = line.replace(/^[>\s]+/, '').trim();
+          if (cleaned) out.extras.push(cleaned);
+        }
+      });
+
+      return out;
+    }
+
     function buildCopywritingConvertedText(order, tplStr, custInputVal, wibMeta, wInfo) {
+      const rawFhAcc = (window.__arcFhRawAccount && order && window.__arcFhRawAccount[order.id]) ? window.__arcFhRawAccount[order.id] : '';
+      const parsedAccount = parseRawAccountFromFh(rawFhAcc);
+      const serviceMode = (window.__arcCwServiceMode && order && window.__arcCwServiceMode[order.id]) ? window.__arcCwServiceMode[order.id] : 'SHARING';
+      let finalTpl = String(tplStr || '');
+      if (serviceMode === 'INVITE_EMAIL' && finalTpl.includes('> Password:')) {
+        finalTpl = finalTpl.replace(/\n?>\s*Password:[^\n]*/gi, '');
+      }
+      return applyAllTemplateVariables(finalTpl, order, {
+        wInfo,
+        wibMeta,
+        custInputVal,
+        parsedAccount,
+        serviceMode
+      });
+    }
+    function __unusedOldCwStub(order, tplStr, custInputVal, wibMeta, wInfo) {
       return applyAllTemplateVariables(tplStr, order, {
         wInfo,
         wibMeta,
@@ -3193,6 +3367,119 @@ create policy "Allow public read/write orders" on public.orders
           });
         });
       });
+      // FH Optional Note input & quick chips
+      window.__arcFhNotes = window.__arcFhNotes || {};
+      window.__arcFhRawAccount = window.__arcFhRawAccount || {};
+      window.__arcCwServiceMode = window.__arcCwServiceMode || {};
+
+      const refreshFhOutputForOrder = (id) => {
+        const order = allOrders.find(o => String(o.id) === String(id));
+        if (!order) return;
+        const cmsLive = (window.ArchieLiveCms && (window.ArchieLiveCms.current || (window.ArchieLiveCms.getCached && window.ArchieLiveCms.getCached()))) || {};
+        const admUi = (cmsLive && cmsLive.adminUi) ? cmsLive.adminUi : ((window.ARCHIE_DEFAULT_CMS && window.ARCHIE_DEFAULT_CMS.adminUi) || {});
+        const fhDir = Array.isArray(admUi.fhDirectory) ? admUi.fhDirectory : [];
+        const selIdx = Number((window.__arcSelectedFh && window.__arcSelectedFh[id]) || 0);
+        const activeFh = fhDir[selIdx] || { name: '' };
+        const mCust = String(order.plan_label || '').match(/\|CUST_DATA:([^|\]]+)/i);
+        const nextTxt = buildFhOrderConvertedText(order, activeFh, mCust ? mCust[1].trim() : '', getAdminRealtimeWibMeta(), admUi.fhOrderTemplate);
+        const outEl = container.querySelector(`textarea[data-fh-output="${id}"]`);
+        if (outEl) {
+          outEl.value = nextTxt;
+          window.__arcTextDrafts['fh:' + id] = nextTxt;
+        }
+      };
+
+      container.querySelectorAll('input[data-fh-note-input]').forEach(inp => {
+        inp.addEventListener('input', () => {
+          const id = inp.getAttribute('data-fh-note-input');
+          window.__arcFhNotes[id] = inp.value;
+          refreshFhOutputForOrder(id);
+        });
+      });
+
+      container.querySelectorAll('button[data-action="fh-note-chip"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const chip = btn.getAttribute('data-chip') || '';
+          const cur = String(window.__arcFhNotes[id] || '').trim();
+          const next = cur ? (cur.includes(chip) ? cur : (cur + ', ' + chip)) : chip;
+          window.__arcFhNotes[id] = next;
+          const inp = container.querySelector(`input[data-fh-note-input="${id}"]`);
+          if (inp) inp.value = next;
+          refreshFhOutputForOrder(id);
+        });
+      });
+
+      // FH -> Customer Account Converter (Live Parse + Individual Pure Copy!)
+      const refreshCwConverterForOrder = (id) => {
+        const order = allOrders.find(o => String(o.id) === String(id));
+        if (!order) return;
+        const cmsLive = (window.ArchieLiveCms && (window.ArchieLiveCms.current || (window.ArchieLiveCms.getCached && window.ArchieLiveCms.getCached()))) || {};
+        const admUi = (cmsLive && cmsLive.adminUi) ? cmsLive.adminUi : ((window.ARCHIE_DEFAULT_CMS && window.ARCHIE_DEFAULT_CMS.adminUi) || {});
+        const cwList = (Array.isArray(admUi.copywritingTemplates) && admUi.copywritingTemplates.length > 0)
+          ? admUi.copywritingTemplates
+          : ((window.ARCHIE_DEFAULT_CMS && window.ARCHIE_DEFAULT_CMS.adminUi && window.ARCHIE_DEFAULT_CMS.adminUi.copywritingTemplates) || []);
+        const selIdx = Math.min(Number((window.__arcSelectedCw && window.__arcSelectedCw[id]) || 0), Math.max(0, cwList.length - 1));
+        const activeCw = cwList[selIdx];
+        if (!activeCw) return;
+        const mCust = String(order.plan_label || '').match(/\|CUST_DATA:([^|\]]+)/i);
+        const wInfo = parseWarrantyAndDurationFromOrder(order);
+        const nextTxt = buildCopywritingConvertedText(order, activeCw.template, mCust ? mCust[1].trim() : '', getAdminRealtimeWibMeta(), wInfo);
+        const outEl = container.querySelector(`textarea[data-cw-output="${id}"]`);
+        if (outEl) {
+          outEl.value = nextTxt;
+          window.__arcTextDrafts['cw:' + id] = nextTxt;
+        }
+        // Update pure copy chip states live
+        const chipsWrap = container.querySelector(`[data-acc-chips="${id}"]`);
+        if (chipsWrap) {
+          const parsedAcc = parseRawAccountFromFh(window.__arcFhRawAccount[id] || '');
+          chipsWrap.innerHTML =
+            `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="email" class="px-2.5 py-1 rounded-lg ${parsedAcc.email ? 'bg-[#4A2036] text-[#FFE066]' : 'bg-white text-[#9A637B] border border-[#EAD0DC]'} text-[10px] font-black cursor-pointer">📧 Copy Email Murni${parsedAcc.email ? ' ✓' : ''}</button>` +
+            `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="password" class="px-2.5 py-1 rounded-lg ${parsedAcc.password ? 'bg-[#D83162] text-white' : 'bg-white text-[#9A637B] border border-[#EAD0DC]'} text-[10px] font-black cursor-pointer">🔑 Copy Password Murni${parsedAcc.password ? ' ✓' : ''}</button>` +
+            (parsedAcc.profile ? `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="profile" class="px-2 py-1 rounded-lg bg-purple-700 text-white text-[10px] font-black cursor-pointer">👤 Copy Profil ✓</button>` : '') +
+            (parsedAcc.pin ? `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="pin" class="px-2 py-1 rounded-lg bg-amber-600 text-white text-[10px] font-black cursor-pointer">🔢 Copy PIN ✓</button>` : '') +
+            (parsedAcc.link ? `<button type="button" data-action="copy-pure-field" data-id="${id}" data-field="link" class="px-2 py-1 rounded-lg bg-teal-600 text-white text-[10px] font-black cursor-pointer">🔗 Copy Link ✓</button>` : '');
+          bindPureCopyButtons(chipsWrap);
+        }
+      };
+
+      const bindPureCopyButtons = (root) => {
+        root.querySelectorAll('button[data-action="copy-pure-field"]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-id');
+            const field = btn.getAttribute('data-field');
+            const parsedAcc = parseRawAccountFromFh(window.__arcFhRawAccount[id] || '');
+            const val = String(parsedAcc[field] || '').trim();
+            if (!val) {
+              showAdminToast(`⚠️ ${field.toUpperCase()} belum terdeteksi — paste dulu info akun dari FH di kotak kiri yaa!`);
+              return;
+            }
+            const lblMap = { email: 'Email Murni', password: 'Password Murni', profile: 'Profil Murni', pin: 'PIN Murni', link: 'Link Murni' };
+            copyToClipboard(val, `${lblMap[field] || field} (${val})`);
+          });
+        });
+      };
+
+      container.querySelectorAll('textarea[data-fh-raw-account]').forEach(ta => {
+        ta.addEventListener('input', () => {
+          const id = ta.getAttribute('data-fh-raw-account');
+          window.__arcFhRawAccount[id] = ta.value;
+          refreshCwConverterForOrder(id);
+        });
+      });
+
+      container.querySelectorAll('button[data-action="set-cw-service-mode"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-id');
+          const mode = btn.getAttribute('data-mode') || 'SHARING';
+          window.__arcCwServiceMode[id] = mode;
+          renderOrdersList(true);
+        });
+      });
+
+      bindPureCopyButtons(container);
+
       container.querySelectorAll('button[data-action="copy-cw-text"]').forEach(btn => {
         btn.addEventListener('click', () => {
           const id = btn.getAttribute('data-id');
@@ -3453,9 +3740,14 @@ create policy "Allow public read/write orders" on public.orders
           const cleanName = stripDonaturText(ord.initials || '') || 'Kakak';
           const cleanProd = stripDonaturText(ord.product_name || 'Aplikasi Premium') || 'Aplikasi Premium';
           const cleanPlan = stripDonaturText(wInfo.cleanPlan || '1 Bulan') || '1 Bulan';
-          const msg = ord.status === 'PAID'
-            ? `Halo kak ${cleanName}! Pembayaran ${formatRp(ord.final_price)} untuk ${cleanProd} (${cleanPlan}) dengan No. Pesanan ${code} sudah LUNAS yaa~ 🐰💗 Tiket Garansi & pengingat durasi real-time kakak bisa dicek kapan saja pakai kode ${code}!`
-            : `Halo kak ${cleanName}! Rincian pesanan ${code} — ${cleanProd} (${cleanPlan}) setelah diskon spin ${ord.discount_pct || 0}% jadi total ${formatRp(ord.final_price)} yaa~ Kode QRIS dinamisnya sudah Mimin kirim di web, silakan di-scan sebelum 5 menit habis! 🐰✨`;
+          const cmsChat = (window.ArchieLiveCms && (window.ArchieLiveCms.current || (window.ArchieLiveCms.getCached && window.ArchieLiveCms.getCached()))) || {};
+          const admChatUi = (cmsChat && cmsChat.adminUi) ? cmsChat.adminUi : {};
+          const defaultPendingChat = "Halo kak {customer_name}! Rincian pesanan {order_code} — {product_name} ({plan_label}) setelah diskon spin {discount_pct} jadi total {total_price} yaa~ Kode QRIS dinamisnya sudah Mimin kirim di web, silakan di-scan sebelum 5 menit habis!";
+          const defaultPaidChat = "Halo kak {customer_name}! Pembayaran {total_price} untuk {product_name} ({plan_label}) dengan No. Pesanan {order_code} sudah LUNAS yaa~ Tiket Garansi & pengingat durasi real-time kakak bisa dicek kapan saja pakai kode {order_code}! ♡";
+          const rawChatTpl = ord.status === 'PAID'
+            ? (admChatUi.quickChatPaidTpl || defaultPaidChat)
+            : (admChatUi.quickChatPendingTpl || defaultPendingChat);
+          const msg = applyAllTemplateVariables(rawChatTpl, ord, { wInfo });
           copyToClipboard(msg, 'Template balasan chat');
         });
       });
@@ -3593,6 +3885,21 @@ create policy "Allow public read/write orders" on public.orders
     async function adminActionUpdateWarrantyOrDuration(orderId, newStampStatus, newExpiresAtMs) {
       const order = allOrders.find(o => String(o.id) === String(orderId));
       if (!order) return;
+      if (typeof window.archieDoubleConfirm === 'function') {
+        const codeLbl = formatOrderCode(orderId, order);
+        const changeDesc = newStampStatus
+          ? `Stempel Garansi → ${newStampStatus}`
+          : (newExpiresAtMs <= Date.now()
+            ? 'Durasi Langganan → SET HABIS (Expired)'
+            : `Durasi Berakhir → ${new Date(newExpiresAtMs).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}`);
+        const okWar = await window.archieDoubleConfirm({
+          title: `Ubah Garansi / Durasi — ${codeLbl}?`,
+          detail: `Pesanan: ${order.product_name || 'Produk'}\nPerubahan: ${changeDesc}\nPerubahan langsung sinkron ke Web Garansi customer.`,
+          confirmText: 'Simpan Perubahan Garansi',
+          tone: (newStampStatus === 'VOID' || (newExpiresAtMs !== null && newExpiresAtMs !== undefined && newExpiresAtMs <= Date.now())) ? 'rose' : 'amber'
+        });
+        if (!okWar) return;
+      }
 
       const currentInfo = parseWarrantyAndDurationFromOrder(order);
       const targetStamp = newStampStatus || currentInfo.warrantyStatus;
@@ -3709,6 +4016,16 @@ create policy "Allow public read/write orders" on public.orders
       const validPrice = Math.max(1000, Number(draft.secretPrice) || 25000);
       const currentInfo = order ? parseWarrantyAndDurationFromOrder(order) : { cleanPlan: 'Spontan Special uhuy~', warrantyStatus: 'UNCLAIMED', expiresAtMs: Date.now() + 30 * 86400000 };
       const updatedCleanPlan = (draft.secretPlanNote || currentInfo.cleanPlan || 'Spontan Special uhuy~').trim();
+      if (typeof window.archieDoubleConfirm === 'function') {
+        const codeLbl = formatOrderCode(orderId, order);
+        const okPrice = await window.archieDoubleConfirm({
+          title: `Kirim Harga Secret — ${codeLbl}?`,
+          detail: `Customer: ${order ? (order.initials || 'Customer') : 'Customer'}\nHarga yang akan dikirim: ${formatRp(validPrice)}\nCatatan Paket: ${updatedCleanPlan}`,
+          confirmText: `Kirim Harga ${formatRp(validPrice)}`,
+          tone: 'berry'
+        });
+        if (!okPrice) return;
+      }
       const encodedPlan = encodePlanLabelWithWarranty(updatedCleanPlan, currentInfo.warrantyStatus, currentInfo.expiresAtMs);
 
       const patchPayload = {
@@ -3771,6 +4088,17 @@ create policy "Allow public read/write orders" on public.orders
       if (!qrisUrl) {
         showAdminToast('⚠️ Upload atau paste foto QRIS dulu sebelum klik Kirim QRIS yaa!');
         return;
+      }
+      if (typeof window.archieDoubleConfirm === 'function') {
+        const codeLbl = formatOrderCode(orderId, order);
+        const isResend = order && order.status === 'QRIS_SENT';
+        const okQris = await window.archieDoubleConfirm({
+          title: `${isResend ? 'Kirim Ulang QRIS' : 'Kirim QRIS'} — ${codeLbl}?`,
+          detail: `Customer: ${order ? (order.initials || 'Customer') : 'Customer'}\nTagihan QRIS: ${formatRp(order ? (order.final_price || 0) : 0)}\nTimer 5 menit di Web Customer akan ${isResend ? 'di-reset ulang' : 'langsung dimulai'}.`,
+          confirmText: isResend ? 'Kirim Ulang QRIS' : 'Kirim QRIS Sekarang',
+          tone: 'berry'
+        });
+        if (!okQris) return;
       }
 
       // Pastikan kalau data:image terlalu besar (>220KB), dikompres otomatis agar 100% cepat & lolos DB
@@ -3872,6 +4200,19 @@ create policy "Allow public read/write orders" on public.orders
 
     async function adminActionConfirmPaid(orderId) {
       const order = allOrders.find(o => String(o.id) === String(orderId));
+      const codeLbl = formatOrderCode(orderId, order);
+      const custLbl = order ? (typeof stripDonaturText === 'function' ? stripDonaturText(order.initials || 'Customer') : (order.initials || 'Customer')) : 'Customer';
+      const prodLbl = order ? (order.product_name || 'Produk') : 'Produk';
+      const nomLbl = formatRp(order ? (order.final_price || order.base_price || 0) : 0);
+      if (typeof window.archieDoubleConfirm === 'function') {
+        const okPaid = await window.archieDoubleConfirm({
+          title: `Konfirmasi LUNAS (PAID) — ${codeLbl}?`,
+          detail: `Customer: ${custLbl}\nProduk: ${prodLbl}\nTotal Pembayaran: ${nomLbl}\n\nPastikan dana sudah benar-benar masuk ke mutasi ShopeePay/QRIS sebelum klik Lunas.`,
+          confirmText: 'Konfirmasi LUNAS (PAID)',
+          tone: 'emerald'
+        });
+        if (!okPaid) return;
+      }
       const patchPayload = { status: 'PAID' };
 
       if (order) Object.assign(order, patchPayload);
@@ -3904,7 +4245,7 @@ create policy "Allow public read/write orders" on public.orders
       const isInstant = !instantToggle || instantToggle.checked;
 
       if (!isInstant) {
-        if (!window.confirm(`Hapus pesanan ${codeLabel} secara permanen?`)) return;
+        if (!(await window.archieDoubleConfirm({ title: `Hapus Pesanan ${codeLabel}?`, detail: 'Pesanan ini akan dihapus permanen dari daftar dan tidak bisa dibalikin.', confirmText: 'Hapus Permanen', tone: 'rose' }))) return;
       }
 
       allOrders = allOrders.filter(o => String(o.id) !== String(orderId));
@@ -3957,7 +4298,7 @@ create policy "Allow public read/write orders" on public.orders
       const instantToggle = document.getElementById('instantDeleteToggle');
       const isInstant = !instantToggle || instantToggle.checked;
       if (!isInstant && allOrders.length > 0) {
-        if (!window.confirm(`Hapus SEMUA (${allOrders.length}) pesanan dan reset urutan kembali ke ARC-0001?`)) return;
+        if (!(await window.archieDoubleConfirm({ title: `Hapus SEMUA (${allOrders.length}) Pesanan?`, detail: 'SELURUH data pesanan akan dihapus dan urutan antrean di-reset kembali ke ARC-0001!', confirmText: 'Hapus Semua Pesanan', tone: 'rose' }))) return;
       }
       const ids = allOrders.map(o => o.id);
       allOrders = [];
@@ -4504,7 +4845,7 @@ create policy "Allow public read/write orders" on public.orders
     adminActionDeleteOrder = async function(orderId) {
       const targetOrder = allOrders.find(o => String(o.id) === String(orderId));
       const codeLabel = targetOrder ? formatOrderCode(targetOrder.id, targetOrder) : formatOrderCode(orderId);
-      if (!window.confirm(`Pindahkan pesanan ${codeLabel} ke arsip terhapus (soft-delete)?`)) return;
+      if (!(await window.archieDoubleConfirm({ title: `Arsipkan / Hapus ${codeLabel}?`, detail: `Pesanan ${codeLabel} akan dipindahkan ke arsip terhapus (soft-delete) dan hilang dari daftar aktif.`, confirmText: 'Ya, Arsipkan Pesanan', tone: 'rose' }))) return;
       allOrders = allOrders.filter(o => String(o.id) !== String(orderId));
       renderQuickOrderChips();
       renderOrdersList(true);
@@ -4846,72 +5187,93 @@ create policy "Allow public read/write orders" on public.orders
     adminUi: {
       fhDirectory: [],
       fhOrderTemplate:
-        "Selamat {greeting_wib}, Kakk {fh_name}\n" +
-        "Aku ada pesanan sebagai berikutt:\n" +
-        "> ```Produk/Aplikasi``` : *{product_name}*\n" +
-        "> ```Durasi Langganan``` : *{plan_label}*\n" +
+        "Selamatt {greeting_wib}, Kakk {fh_name}\n" +
+        "Aku ada pesanan sebagai berikutt:\n\n" +
+        "```Produk/Aplikasi``` : *{product_name}*\n" +
+        "```Tipe Langganan``` : *{subscription_type}*\n" +
+        "```Durasi Langganan``` : *{duration_label}*\n" +
         "{customer_input}\n" +
-        "```Kode Tracking``` : *{order_code}*\n\n\n" +
+        "> ```Kode Tracking``` : *{order_code}*\n\n" +
         "Terima kasih sebelumnyaa Kak {fh_name}! ( ˶˘ ³˘)♡",
+      quickChatPendingTpl:
+        "Halo kak {customer_name}! Rincian pesanan {order_code} — {product_name} ({plan_label}) setelah diskon spin {discount_pct} jadi total {total_price} yaa~ Kode QRIS dinamisnya sudah Mimin kirim di web, silakan di-scan sebelum 5 menit habis!",
+      quickChatPaidTpl:
+        "Halo kak {customer_name}! Pembayaran {total_price} untuk {product_name} ({plan_label}) dengan No. Pesanan {order_code} sudah LUNAS yaa~ Tiket Garansi & pengingat durasi real-time kakak bisa dicek kapan saja pakai kode {order_code}! ♡",
       copywritingTemplates: [
         {
           id: "cw_welcome",
           icon: "🌸",
           label: "Order Masuk",
-          template: "Halo {greeting_wib} Kak {customer_name}! 🌸 Pesanan {order_code} ({product_name} — {plan_label}) sudah masuk antrean Mimin Archie yaa. Mohon ditunggu sebentar, lagi Mimin proses dulu! 🐰✨"
+          template: "Halo selamatt {greeting_wib} Kak {customer_name}! Pesanan {order_code} ({product_name} — {plan_label}) sudah masuk antrean Mimin Archie yaa. Mohon ditunggu sebentar, lagi Mimin proses dulu! (•̀ᴗ•́)و"
         },
         {
           id: "cw_handover",
           icon: "📦",
           label: "Kirim Akun",
-          template: "Halo {greeting_wib} Kak {customer_name}! 🌸 Akun {product_name} ({plan_label}) untuk pesanan {order_code} sudah siap dipakai yaa!\n• Portal Garansi: {warranty_url}\n• Kata Sandi Tiket: {pin}\n• Berlaku s/d: {exp_date}\nJangan lupa kirim SS bukti login awal maksimal 1x12 jam biar garansinya aktif yaa! 🐰💗"
+          template: "Halo selamatt {greeting_wib} Kak {customer_name}! Akun {product_name} ({plan_label}) untuk pesanan {order_code} sudah siap dipakai yaa!\n> Gmail: `{email}`\n> Password: `{password}`\n{extra_account_info}Jangan lupa kirim SS bukti login awal maksimal 1x12 jam biar garansinya aktif yaa! ♡"
         },
         {
           id: "cw_ss_login",
           icon: "📸",
           label: "Ingetin SS Awal",
-          template: "Halo {greeting_wib} Kak {customer_name} 🌸 Mimin izin ingetin sebentar yaa buat kirim screenshot bukti login awal {product_name} ({order_code}) biar stempel garansi Kakak langsung aktif di Portal Garansi! 🐰✨"
+          template: "Halo selamatt {greeting_wib} Kak {customer_name}, Mimin izin ingetin sebentar yaa buat kirim screenshot bukti login awal {product_name} ({order_code}) biar stempel garansi Kakak langsung aktif di Portal Garansi! ( ˙꒳​˙ )"
         },
         {
           id: "cw_h1",
           icon: "⏳",
           label: "Reminder H-1",
-          template: "Halo {greeting_wib} Kak {customer_name}! 🌸 Masa aktif {product_name} ({order_code}) sebentar lagi berakhir pada {exp_date}. Kalau mau perpanjang biar nggak kepotong, langsung kabari Mimin Archie yaa~ 🐰💗"
+          template: "Halo selamatt {greeting_wib} Kak {customer_name}! Bagaimana kabarnyaa? Semoga sehat dan sukses yaaa 💛 Aku izin ngingetin nihh, masa aktif {product_name} ({order_code}) sebentar lagi berakhir pada {exp_date}. Kalau mau perpanjang biar nggak kepotong, langsung kabari Mimin Archie yaa ☆ ～('▽^人)"
         },
         {
-          id: "cw_testi",
-          icon: "💌",
-          label: "Follow-up Testi",
-          template: "Halo {greeting_wib} Kak {customer_name}! 🐰💗 Gimana pemakaian {product_name} ({order_code}) sejauh ini, aman & lancar kan? Kalau berkenan, boleh bantu kasih testimoni manis di Portal Garansi ({warranty_url}) yaa Kak, makasih banyak! 🌸✨"
+          id: "cw_renew",
+          icon: "🔄",
+          label: "Convert Renewal Account",
+          template: "Halo selamatt {greeting_wib} Kak {customer_name}! Gimanaa pemakaian {product_name} selama inii? Jangan lupa hari ini jadwal renewal yaa Kakk~ Berikut aku berikan informasi terkait login kembalinya:\n> Gmail: `{email}`\n> Password: `{password}`\n{extra_account_info}Selamat menikmati kembali langganannya yaaw Kakk! Bilamana ada kendala, langsung chat aku ajaa ~(˘▽˘~)"
         },
         {
           id: "cw_claim",
           icon: "🛡️",
           label: "Proses Garansi",
-          template: "Halo {greeting_wib} Kak {customer_name}, laporan kendala {product_name} ({order_code}) sudah Mimin terima yaa 🙏 Lagi Mimin cek & proses klaim garansinya sesuai SLA 1x24 jam. Mohon ditunggu update dari Mimin Archie! 🐰💗"
+          template: "Halo {greeting_wib} Kak {customer_name}, laporan kendala {product_name} ({order_code}) sudah Mimin terima yaa. Lagi Mimin cek & proses klaim garansinya sesuai SLA 1x24 jam. Mohon ditunggu update dari Mimin Archie! ♡( ◡‿◡ )"
         },
         {
           id: "cw_delay",
           icon: "🙏",
           label: "Maaf Delay",
-          template: "Halo {greeting_wib} Kak {customer_name} 🙏 Mohon maaf banget yaa pesanan {order_code} ({product_name}) agak sedikit menunggu karena antrean lagi ramai. Mimin lagi kebut prosesnya, begitu beres langsung Mimin kirim ke Kakak! 🐰🌸"
+          template: "Halo {greeting_wib} Kak {customer_name}, mohon maaf banget yaa pesanan {order_code} ({product_name}) agak sedikit menunggu karena antrean lagi ramai. Mimin lagi kebut prosesnya, begitu beres langsung Mimin kirim ke Kakak! ✨"
         }
       ],
       waHandoverTemplate:
-        "Halo Kak *{customer_name}*! Pesanan Kakak sudah 100% beres diproses yaa~ Ი𐑼🌸\n\n" +
-        "> 📦 *Nomor Pesanan:* `{order_code}` _(Simpan kode ini baik-baik ya Kak!)_\n" +
-        "> 🔑 *Kata Sandi Tiket (4–5 Huruf):* `{access_pin}`\n" +
-        "> 🛠️ *Layanan:* *{product_name}* ({plan_label})\n" +
-        "> 💰 *Total Lunas:* `{total_price}`\n" +
+        "Halo Kak *{customer_name}*! Pesanan Kakak sudah 95% beres diproses yaa~ Ი𐑼\n\n" +
+        "Pertama-tama, Mimin Archie mau ngucapin *terima kasih yang sebesar-besarnya* karena Kakak udah memercayakan Archie untuk melayani kebutuhan Kakak! Bagi mimin, kepuasan dan ketenangan pikiran Kakak setelah beli itu nomor satu! Makanya, mimin buatkan panduan lengkap ini khusus buat Kakak. ⸜(｡˃ ᵕ ˂ )⸝♡\n\n" +
+        "📋 *RINGKASAN DATA TRANSAKSI KAKAK:*\n" +
+        "> 📦 *Nomor Pesanan:* `{order_code}`\n" +
+        "> 🎟️ *Password Pesanan:* `{pin}`\n" +
+        "> _(Simpan ini baik-baik ya Kak!)_\n" +
+        "> 🛠️ *Produk/Layanan:* *{product_name} ({plan_label})*\n" +
+        "> 💳 *Total Pembayaran:* *{total_price}*\n" +
         "> 🐰 *Kasir Penanggung Jawab:* _Mimin Archie_\n\n" +
-        "📌 *PANDUAN AKTIVASI GARANSI (WAJIB 3 LANGKAH):*\n" +
-        "*Langkah 1 — Wajib Kirim Screenshot (Batas 1x12 Jam)* 📸\n" +
-        "Begitu berhasil masuk, langsung kirim screenshot full layar ke Mimin yaa.\n" +
-        "*Langkah 2 — Buka & Simpan Tiket Struk Resmi* 🎟️\n" +
-        "Link tiket: {warranty_url} (Kode: `{order_code}` • PIN: `{access_pin}`).\n" +
-        "*Langkah 3 — Patuhi TnC Khusus {product_name}* 🛡️\n" +
-        "_{app_tnc}_\n\n" +
-        "Selamat menikmati layanannya yaa Kak! ⸜(。˃ ᴗ ˂ )⸝♡"
+        "                    ─── ⋆⋅𖤓⋅⋆ ───\n\n" +
+        "*BAGAIMANA CARA KERJA GARANSI & PANTAU DURASI?* ❓\n" +
+        "Supaya Kak *{customer_name}* tenang dan gak bingung kalau nanti butuh bantuan, begini alur perlindungannya ya Kak:\n\n" +
+        "*Langkah 1: Wajib Kirim Screenshot Sekarang* 📸\n" +
+        "Setelah membaca pesan ini, mohon langsung *screenshot penuh bukti sudah login/sudah berhasil* dan kirimkan ke mimin ya Kak. Ini adalah syarat wajib agar garansi Kakak berstatus *AKTIF*.\n\n" +
+        "*Langkah 2: Buka Web Khusus yang Sudah Mimin Siapkan* 💻\n" +
+        "Nanti Kakak akan menemukan halaman input, mohon masukkan nomor pesanan `{order_code}` dan password pesanan `{pin}` milik Kakak ya!\n" +
+        "Melalui web khusus customer tersebut, semuanya serba otomatis:\n" +
+        "• ⏳ *Layar Hitung Mundur:* Kakak bisa lihat sisa durasi masa aktif secara _live_ kapan pun Kakak mau.\n" +
+        "• 🔴 *Notifikasi Habis Otomatis:* Kalau masa berlangganan telah selesai, tampilan durasi di web akan otomatis berubah menjadi _\"Durasi sudah habis;(\"_.\n" +
+        "• 🏷️ *Stempel Status Garansi:* Kakak bisa lihat status klaim garansi Kakak langsung dari halaman web yang sama.\n" +
+        "• 📤 *Kolom Testimoni:* Bilamana Kakak mempunyai keluhan, saran, maupun ingin sekadar menyampaikan pengalaman pribadi Kakak mengenai layanan Archie, boleh banget tulis di situu (˶˃ ᵕ ˂˶)\n\n" +
+        "Berikut Mimin berikan link untuk website khusus Kakak, langsung dipencet saja yaa~\n" +
+        "> {warranty_url}\n\n" +
+        "*Langkah 3: Panduan Klaim jika Terjadi Kendala* ⚠️\n" +
+        "Bilamana sewaktu-waktu Kakak mengalami kendala pada akun/layanannya, mohon untuk *langsung mengambil screenshot kendala tersebut secara menyeluruh beserta jam/waktu terjadinya*, lalu kirimkan ke chat mimin ya Kak. Ini penting banget biar mimin bisa langsung cek log sistem dan bantu beresin secepat mungkin! 🕒⚡\n\n" +
+        "*Pengingat Ulang* ‼️\n" +
+        "Mimin mohon untuk setiap informasi yang mimin kirimkan dibaca dengan seksama yaa~ Apabila ada keluhan atau keinginan kakak yang sudah di luar kemampuan/keharusan mimin, sayangnya mimin tidak dapat membantu.. Dan mimin memohon untuk bersabar ya.. karena ada beberapa momen dimana mimin tidak bisa langsung muncul untuk membantu Kakak. _Estimasi maksimal adalah 1 jam di waktu kerja untuk mimin membalas pesan Kakak._ Apabila mimin belum membalas, Kakak dipersilahkan untuk misscall mimin dalam *batasan yang wajar* yaa~ Mimin akan selalu bertanggung jawab akan hal-hal yang *di bawah kewajiban mimin!*\n" +
+        "(=^ ^=)\n\n" +
+        "Kalau ada satu hal aja yang kurang jelas, jangan sungkan buat tanya mimin ya Kak! Mimin bakal dengan senang hati bantu jelasin. Terima kasih banyak sekali lagi, sehat dan sukses selalu buat Kak *{customer_name}*!\n" +
+        "ദ്ദി(˵ •̀ ᴗ - ˵ ) ✧ 🌸✨"
     }
   };
 
@@ -5538,7 +5900,16 @@ create policy "Allow public read/write orders" on public.orders
     }
     const mergeBtn = document.getElementById('toggleMergeTodayQrisBtn');
     if (mergeBtn) {
-      mergeBtn.addEventListener('click', () => {
+      mergeBtn.addEventListener('click', async () => {
+        if (typeof window.archieDoubleConfirm === 'function') {
+          const okMerge = await window.archieDoubleConfirm({
+            title: isTodayMerged ? 'Batalkan Status Cair QRIS Hari Ini?' : 'Tandai QRIS Hari Ini Sudah Cair?',
+            detail: `Nominal QRIS Hari Ini: ${rp(todayQrisTotal)}\nStatus pencairan saldo ekonomi akan langsung diperbarui.`,
+            confirmText: isTodayMerged ? 'Batalkan Cair' : 'Tandai Sudah Cair',
+            tone: 'emerald'
+          });
+          if (!okMerge) return;
+        }
         const m = loadQrisSettledMap();
         m[todayKey] = !m[todayKey];
         saveQrisSettledMap(m);
@@ -6154,6 +6525,106 @@ create policy "Allow public read/write orders" on public.orders
 
     })();
   </script>
+
+
+<script>
+// ============================================================================
+// ARCHIE'PELAGO — UNIVERSAL 2-STEP DOUBLE CONFIRMATION MODAL (ANTI SALAH PENCET)
+// ============================================================================
+(function() {
+  if (window.archieDoubleConfirm) return;
+  window.archieDoubleConfirm = function(opts) {
+    return new Promise(function(resolve) {
+      var cfg = opts || {};
+      var title = String(cfg.title || 'Konfirmasi Aksi Penting');
+      var detail = String(cfg.detail || 'Pastikan data sudah benar sebelum melanjutkan.');
+      var confirmText = String(cfg.confirmText || 'Ya, Jalankan Sekarang');
+      var tone = cfg.tone || 'berry';
+
+      var existing = document.getElementById('archieDoubleConfirmBackdrop');
+      if (existing) existing.remove();
+
+      var toneBtn = tone === 'emerald'
+        ? 'background:#059669;color:#fff;'
+        : (tone === 'rose'
+          ? 'background:#E11D48;color:#fff;'
+          : (tone === 'amber'
+            ? 'background:#D97706;color:#fff;'
+            : 'background:#D83162;color:#fff;'));
+
+      var backdrop = document.createElement('div');
+      backdrop.id = 'archieDoubleConfirmBackdrop';
+      backdrop.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(42,14,29,0.62);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:16px;';
+
+      var card = document.createElement('div');
+      card.style.cssText = 'width:100%;max-width:420px;background:#FFFBFD;border:2px solid #F5B8CE;border-radius:24px;padding:20px;box-shadow:0 24px 60px rgba(74,32,54,0.35);font-family:"Plus Jakarta Sans",system-ui,sans-serif;color:#4A2036;';
+
+      var step = 1;
+
+      function escHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br/>');
+      }
+
+      function closeWith(val) {
+        document.removeEventListener('keydown', onKey);
+        if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+        resolve(Boolean(val));
+      }
+
+      function onKey(e) {
+        if (e.key === 'Escape') closeWith(false);
+      }
+      document.addEventListener('keydown', onKey);
+
+      function renderStep() {
+        var badgeBg = step === 1 ? '#FFE5EE' : '#FEF3C7';
+        var badgeCol = step === 1 ? '#D83162' : '#B45309';
+        var badgeTxt = step === 1 ? '🛡️ DOUBLE CONFIRM • TAHAP 1 / 2' : '⚠️ KONFIRMASI TERAKHIR • TAHAP 2 / 2';
+        var warnBox = step === 2
+          ? '<div style="margin-top:10px;padding:10px 12px;border-radius:14px;background:#FFF7ED;border:1.5px solid #FDBA74;color:#9A3412;font-size:11.5px;font-weight:800;line-height:1.45;">⚠️ Cek sekali lagi! Klik tombol di bawah untuk benar-benar mengeksekusi perubahan ini.</div>'
+          : '';
+        var okLabel = step === 1 ? 'Lanjut Konfirmasi (1/2) →' : ('✅ ' + confirmText);
+
+        card.innerHTML =
+          '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">' +
+            '<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:' + badgeBg + ';color:' + badgeCol + ';font-size:10px;font-weight:900;letter-spacing:0.04em;">' + badgeTxt + '</span>' +
+            '<button type="button" data-dc-cancel="1" style="background:transparent;border:none;font-size:16px;font-weight:900;color:#9A637B;cursor:pointer;padding:2px 6px;">✕</button>' +
+          '</div>' +
+          '<div style="font-size:16px;font-weight:900;color:#4A2036;line-height:1.3;">' + escHtml(title) + '</div>' +
+          '<div style="margin-top:8px;padding:11px 13px;border-radius:16px;background:#FFF4F8;border:1px solid #F7C6D9;font-size:12px;font-weight:700;color:#6D3B53;line-height:1.55;">' + escHtml(detail) + '</div>' +
+          warnBox +
+          '<div style="display:flex;gap:8px;margin-top:16px;">' +
+            '<button type="button" data-dc-cancel="1" style="flex:1;padding:10px 12px;border-radius:14px;background:#FFF0F6;border:1.5px solid #F5B8CE;color:#7A4961;font-size:12px;font-weight:800;cursor:pointer;">Batal</button>' +
+            '<button type="button" data-dc-ok="1" style="flex:1.4;padding:10px 12px;border-radius:14px;border:none;' + (step === 1 ? 'background:#4A2036;color:#fff;' : toneBtn) + 'font-size:12px;font-weight:900;cursor:pointer;box-shadow:0 6px 16px rgba(74,32,54,0.2);">' + escHtml(okLabel) + '</button>' +
+          '</div>';
+
+        card.querySelectorAll('[data-dc-cancel]').forEach(function(b) {
+          b.addEventListener('click', function() { closeWith(false); });
+        });
+        var okBtn = card.querySelector('[data-dc-ok]');
+        if (okBtn) {
+          okBtn.addEventListener('click', function() {
+            if (step === 1) {
+              step = 2;
+              renderStep();
+            } else {
+              closeWith(true);
+            }
+          });
+        }
+      }
+
+      backdrop.addEventListener('click', function(e) {
+        if (e.target === backdrop) closeWith(false);
+      });
+
+      backdrop.appendChild(card);
+      document.body.appendChild(backdrop);
+      renderStep();
+    });
+  };
+})();
+</script>
 
 </body>
 </html>
