@@ -190,26 +190,24 @@
     button, a, input, select, textarea { touch-action: manipulation; }
     article[data-arc-card] { touch-action: pan-y; }
     body { padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); }
-    /* Multi-column 2-3 grid vibe di HP (dan otomatis full Mac UI saat Request Desktop Website di Safari!) */
+    /* Placement HP yang lega, rapi, & anti-sempit (Request Desktop Website tetap full Mac UI!) */
     @media (max-width: 767px) {
-      header > div { padding: 8px 10px !important; gap: 6px !important; }
+      header > div { padding: 8px 12px !important; gap: 6px !important; }
+      header p.text-\[10\.5px\] { display: none !important; }
       header > div > div:last-child { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; width: 100%; padding-bottom: 2px; scrollbar-width: none; }
       header > div > div:last-child::-webkit-scrollbar { display: none; }
       header > div > div:last-child > * { flex-shrink: 0 !important; white-space: nowrap !important; }
       #filterTabsContainer { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; padding-bottom: 2px; scrollbar-width: none; }
       #filterTabsContainer::-webkit-scrollbar { display: none; }
       #filterTabsContainer > * { flex-shrink: 0 !important; white-space: nowrap !important; }
-      main { padding-left: 8px !important; padding-right: 8px !important; padding-top: 10px !important; }
-      #ordersListContainer { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
-      #ordersListContainer > * { margin-top: 0 !important; }
-      #ordersListContainer article[data-arc-card] { border-radius: 16px !important; }
-      #ordersListContainer article[data-arc-card] > div.flex-1 { padding: 8px !important; }
-      #ordersListContainer article[data-arc-card] .text-sm { font-size: 11px !important; line-height: 1.25 !important; }
-      #ordersListContainer article[data-arc-card] .text-base { font-size: 12px !important; }
-      #ordersListContainer article[data-arc-card] .text-\[11px\], #ordersListContainer article[data-arc-card] .text-\[10\.5px\] { font-size: 9.5px !important; }
-      #ordersListContainer article[data-arc-card] button[data-action="arc-slide-set"] { min-width: 58px !important; padding: 3px 6px !important; font-size: 8.5px !important; }
-      #ordersListContainer > div.sweet-card { grid-column: 1 / -1 !important; }
-      section.grid.grid-cols-2 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; }
+      main { padding-left: 10px !important; padding-right: 10px !important; padding-top: 10px !important; }
+      section.grid.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+      #ordersListContainer { display: flex !important; flex-direction: column !important; gap: 12px !important; }
+      #ordersListContainer article[data-arc-card] { border-radius: 20px !important; width: 100% !important; }
+      #ordersListContainer article[data-arc-card] > div.flex-1 { padding: 12px !important; }
+      #ordersListContainer article[data-arc-card] .grid.grid-cols-1.sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px !important; }
+      #ordersListContainer article[data-arc-card] button[data-action="arc-slide-set"] { min-width: 78px !important; padding: 6px 8px !important; font-size: 10px !important; }
+      #ordersListContainer article[data-arc-card] input, #ordersListContainer article[data-arc-card] textarea { font-size: 13px !important; }
     }
   </style>
 </head>
@@ -1769,7 +1767,25 @@ create policy "Allow public read/write orders" on public.orders
           });
 
           firstLoadDone = true;
-          allOrders = (rows || []).map(r => (r && String(r.status || '').toUpperCase() === 'QRIS_REQUESTED') ? Object.assign({}, r, { status: 'WAITING_QRIS' }) : r);
+          allOrders = (rows || []).map(r => {
+            if (!r) return r;
+            const out = (String(r.status || '').toUpperCase() === 'QRIS_REQUESTED') ? Object.assign({}, r, { status: 'WAITING_QRIS' }) : Object.assign({}, r);
+            const rawPl = String(out.plan_label || '');
+            const mDisc = rawPl.match(/\|CUST_DISC:(\d+(?:\.\d+)?)/i);
+            const mSaved = rawPl.match(/\|CUST_SAVED:(\d+(?:\.\d+)?)/i);
+            const mFinal = rawPl.match(/\|CUST_FINAL:(\d+(?:\.\d+)?)/i);
+            if (mFinal) {
+              const cFinal = Number(mFinal[1]);
+              const cDisc = mDisc ? Number(mDisc[1]) : Number(out.discount_pct || 0);
+              const cSaved = mSaved ? Number(mSaved[1]) : Number(out.saved_amount || 0);
+              if (cFinal > 0) {
+                out.final_price = cFinal;
+                out.discount_pct = cDisc;
+                out.saved_amount = cSaved;
+              }
+            }
+            return out;
+          });
           updateConnectionUI(true);
           updateDashboardStatsAndBadges();
           renderQuickOrderChips();
@@ -2651,14 +2667,17 @@ create policy "Allow public read/write orders" on public.orders
       const parsed = parseStructuredCustData(custInputVal);
       const cleanFhPlan = String((wInfo && wInfo.cleanPlan) ? wInfo.cleanPlan : (order.plan_label || '1 Bulan'))
         .replace(/\[[^\]]*\]/g, '')
-        .replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi(?:\s*rp[\d.,]+)?)/gi, '')
-        .replace(/\(\s*(?:👑\s*)?(?:donatur|donasi[^)]*)\s*\)/gi, '')
+        .replace(/\(\s*\+?\s*rp[\s\d.,]+\)/gi, '')
+        .replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi(?:\s*\+?\s*rp[\s\d.,]+)?)/gi, '')
+        .replace(/\(\s*(?:👑\s*)?(?:donatur|donasi)[^)]*\)/gi, '')
+        .replace(/(?:[•|,+-]\s*)?\+\s*rp[\s\d.,]+/gi, '')
         .replace(/\s*[•|]\s*(?=[•|]|$)/g, '')
         .replace(/^[•|,\-\s]+|[•|,\-\s]+$/g, '')
         .replace(/\s{2,}/g, ' ')
         .trim() || '1 Bulan';
       const cleanFhProduct = String(order.product_name || 'Aplikasi Premium')
-        .replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi(?:\s*rp[\d.,]+)?)/gi, '')
+        .replace(/\(\s*\+?\s*rp[\s\d.,]+\)/gi, '')
+        .replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi(?:\s*\+?\s*rp[\s\d.,]+)?)/gi, '')
         .replace(/\s{2,}/g, ' ')
         .trim() || 'Aplikasi Premium';
 
