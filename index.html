@@ -2885,14 +2885,18 @@ create policy "Allow public read/write orders" on public.orders
       container.querySelectorAll('input[data-action="custom-fh-name"]').forEach(inp => {
         inp.addEventListener('input', () => {
           const id = inp.getAttribute('data-id');
-          const order = liveOrders.find(o => String(o.id) === String(id));
+          window.__arcLastInteractAt = Date.now();
+          const order = allOrders.find(o => String(o.id) === String(id));
           if (!order) return;
           const outEl = container.querySelector(`textarea[data-fh-output="${id}"]`);
-          const cmsLive = (window.ArchieLiveCms && window.ArchieLiveCms.getCached) ? window.ArchieLiveCms.getCached() : {};
+          const cmsLive = (window.ArchieLiveCms && (window.ArchieLiveCms.current || (window.ArchieLiveCms.getCached && window.ArchieLiveCms.getCached()))) || {};
           const rawPlan = String(order.plan_label || '');
           const mCust = rawPlan.match(/CUST_DATA:([^|\]]+)/i);
+          const nextTxt = buildFhOrderConvertedText(order, { name: inp.value.trim() }, mCust ? mCust[1].trim() : '', getAdminRealtimeWibMeta(), cmsLive.adminUi && cmsLive.adminUi.fhOrderTemplate);
           if (outEl) {
-            outEl.value = buildFhOrderConvertedText(order, { name: inp.value.trim() || 'FH' }, mCust ? mCust[1].trim() : '', getAdminRealtimeWibMeta(), cmsLive.adminUi && cmsLive.adminUi.fhOrderTemplate);
+            outEl.value = nextTxt;
+            outEl.dataset.userDirty = '1';
+            if (window.__arcTextDrafts) window.__arcTextDrafts['fh:' + id] = nextTxt;
           }
         });
       });
@@ -4633,22 +4637,27 @@ create policy "Allow public read/write orders" on public.orders
       return JSON.parse(JSON.stringify(DEFAULT_CMS));
     },
 
+    current: null,
     fetchLive: async function(sbUrl, sbAnonKey) {
       var localCfg = this.getCached();
-      if (!sbUrl || !sbAnonKey) return localCfg;
+      this.current = localCfg;
+      var url = sbUrl || window.ARCHIE_SUPABASE_URL || '';
+      var key = sbAnonKey || window.ARCHIE_SUPABASE_ANON_KEY || '';
+      if (!url || !key) return localCfg;
       try {
-        var resp = await fetch(sbUrl + '/rest/v1/store_cms_config?id=eq.live&select=config_json,version,updated_at', {
+        var resp = await fetch(url + '/rest/v1/store_cms_config?id=eq.live&select=config_json,updated_at&_t=' + Date.now(), {
+          cache: 'no-store',
           headers: {
-            'apikey': sbAnonKey,
-            'Authorization': 'Bearer ' + sbAnonKey
+            'apikey': key,
+            'Authorization': 'Bearer ' + key
           }
         });
         if (resp.ok) {
           var rows = await resp.json();
           if (Array.isArray(rows) && rows[0] && rows[0].config_json && Object.keys(rows[0].config_json).length > 0) {
             var merged = deepMerge(DEFAULT_CMS, rows[0].config_json);
-            merged.version = rows[0].version || merged.version || 1;
             merged.updatedAt = rows[0].updated_at || merged.updatedAt;
+            this.current = merged;
             try { localStorage.setItem('archie_live_cms_config', JSON.stringify(merged)); } catch (e) {}
             return merged;
           }
@@ -4657,6 +4666,15 @@ create policy "Allow public read/write orders" on public.orders
       return localCfg;
     }
   };
+  // Auto-sync live CMS dari Web Editor ke Web Admin saat dibuka & tiap 30 detik
+  window.ArchieLiveCms.current = window.ArchieLiveCms.getCached();
+  function syncAdminLiveCms() {
+    window.ArchieLiveCms.fetchLive(window.ARCHIE_SUPABASE_URL, window.ARCHIE_SUPABASE_ANON_KEY).then(function() {
+      if (typeof renderOrdersList === 'function') renderOrdersList(false);
+    });
+  }
+  setTimeout(syncAdminLiveCms, 120);
+  setInterval(syncAdminLiveCms, 30000);
 })();
 
 </script>
