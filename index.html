@@ -1734,6 +1734,34 @@ create policy "Allow public read/write orders" on public.orders
       });
     }
 
+    async function attachImageFileToOrder(orderId, fileOrBlob, sourceLabel = 'Foto QRIS') {
+      if (!orderId || !fileOrBlob) return;
+      try {
+        const ord = allOrders.find(o => String(o.id) === String(orderId));
+        const draft = ensureDraftForOrder(ord || { id: orderId });
+        const rawDataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (ev) => resolve(ev.target.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(fileOrBlob);
+        });
+        draft.rawUploadedQrisSource = rawDataUrl;
+        let processed = rawDataUrl;
+        try {
+          processed = await processQrisImageWithMode(rawDataUrl, 'CROP_ONLY', ord ? formatRp(ord.final_price) : '');
+        } catch (cropErr) {
+          console.warn('Auto-crop QRIS fallback ke gambar asli:', cropErr);
+          processed = rawDataUrl;
+        }
+        draft.qrisImageUrl = processed;
+        renderOrdersList(true);
+        showAdminToast(`✅ ${sourceLabel} siap dikirim! Klik "Kirim QRIS" untuk kirim ke Web Customer.`);
+      } catch (err) {
+        console.error('attachImageFileToOrder error:', err);
+        showAdminToast('⚠️ Gagal memproses gambar QRIS. Coba pilih ulang fotonya yaa!', true);
+      }
+    }
+
     // =====================================================
     // FETCH & SYNC ALL ORDERS FROM SUPABASE public.orders
     // =====================================================
@@ -3595,7 +3623,20 @@ create policy "Allow public read/write orders" on public.orders
       const draft = orderDraftState[orderId] || {};
       let qrisUrl = (draft.qrisImageUrl || (order && order.qris_image_url) || '').trim();
 
-      if (qrisUrl && qrisUrl.startsWith('data:image') && typeof uploadQrisDataUrlToStorage === 'function') {
+      if (!qrisUrl) {
+        const urlInput = document.querySelector(`input[data-action="input-qris-url"][data-id="${orderId}"]`);
+        const typedVal = urlInput ? urlInput.value.trim() : '';
+        if (typedVal && (typedVal.startsWith('http') || typedVal.startsWith('data:image'))) {
+          qrisUrl = typedVal;
+        }
+      }
+
+      if (!qrisUrl) {
+        showAdminToast('⚠️ Upload atau paste foto QRIS dulu sebelum klik Kirim QRIS yaa!', true);
+        return;
+      }
+
+      if (qrisUrl.startsWith('data:image') && typeof uploadQrisDataUrlToStorage === 'function') {
         try {
           const uploadedUrl = await uploadQrisDataUrlToStorage(orderId, qrisUrl);
           if (uploadedUrl) {
@@ -3607,7 +3648,7 @@ create policy "Allow public read/write orders" on public.orders
 
       const patchPayload = {
         status: 'QRIS_SENT',
-        qris_image_url: qrisUrl || null
+        qris_image_url: qrisUrl
       };
 
       qrisSentTimestamps[orderId] = Date.now();
@@ -3632,13 +3673,13 @@ create policy "Allow public read/write orders" on public.orders
           ok = true;
         }
         if (ok) {
-          showAdminToast(qrisUrl ? '✅ Foto QRIS berhasil dikirim ke Web Customer!' : '✅ Status QRIS terkirim (tanpa foto).');
+          showAdminToast(`📤 Foto QRIS asli terkirim ke ${formatOrderCode(orderId)}! Timer 5 menit berjalan.`);
         } else if (lastErr) {
           showAdminToast('⚠️ Gagal kirim QRIS ke server: ' + lastErr, true);
         }
-      } catch (e) {}
-
-      showAdminToast(`📤 QRIS Dinamis terkirim ke ${formatOrderCode(orderId)}! Timer 5 menit berjalan.`);
+      } catch (e) {
+        showAdminToast('⚠️ Gagal kirim QRIS ke server: ' + (e && e.message ? e.message : 'Cek koneksi'), true);
+      }
     }
 
     async function adminActionConfirmPaid(orderId) {
@@ -4305,16 +4346,24 @@ create policy "Allow public read/write orders" on public.orders
         const client = getSupabaseClient();
         if (!client || !client.storage || !String(dataUrl).startsWith('data:image')) return dataUrl;
         const arr = dataUrl.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1] || 'image/png';
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        const mime = (mimeMatch && mimeMatch[1]) ? mimeMatch[1] : 'image/jpeg';
+        const ext = (mime.includes('jpeg') || mime.includes('jpg')) ? 'jpg' : 'png';
         const bstr = atob(arr[1]);
         const u8 = new Uint8Array(bstr.length);
         for (let i = 0; i < bstr.length; i++) u8[i] = bstr.charCodeAt(i);
         const blob = new Blob([u8], { type: mime });
-        const filePath = `qris_${orderId}_${Date.now()}.png`;
+        const filePath = `qris_${orderId}_${Date.now()}.${ext}`;
         const { error } = await client.storage.from('qris-images').upload(filePath, blob, { upsert: true, contentType: mime });
         if (error) return dataUrl;
         const { data } = client.storage.from('qris-images').getPublicUrl(filePath);
-        return (data && data.publicUrl) ? data.publicUrl : dataUrl;
+        const pubUrl = data && data.publicUrl ? data.publicUrl : '';
+        if (!pubUrl) return dataUrl;
+        try {
+          const checkResp = await fetch(pubUrl, { method: 'HEAD' });
+          if (checkResp && checkResp.ok) return pubUrl;
+        } catch (_) {}
+        return dataUrl;
       } catch (e) {
         return dataUrl;
       }
