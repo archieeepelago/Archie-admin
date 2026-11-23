@@ -1777,10 +1777,11 @@ create policy "Allow public read/write orders" on public.orders
           });
 
           firstLoadDone = true;
+          const __syncQueue = [];
           allOrders = (rows || []).map(r => {
             if (!r) return r;
             const out = (String(r.status || '').toUpperCase() === 'QRIS_REQUESTED') ? Object.assign({}, r, { status: 'WAITING_QRIS' }) : Object.assign({}, r);
-            const rawPl = String(out.plan_label || '');
+            const rawPl = String(out.plan_label || '') + ' ' + String(out.duration_tier || '');
             const mDisc = rawPl.match(/\|CUST_DISC:(\d+(?:\.\d+)?)/i);
             const mSaved = rawPl.match(/\|CUST_SAVED:(\d+(?:\.\d+)?)/i);
             const mFinal = rawPl.match(/\|CUST_FINAL:(\d+(?:\.\d+)?)/i);
@@ -1789,13 +1790,28 @@ create policy "Allow public read/write orders" on public.orders
               const cDisc = mDisc ? Number(mDisc[1]) : Number(out.discount_pct || 0);
               const cSaved = mSaved ? Number(mSaved[1]) : Number(out.saved_amount || 0);
               if (cFinal > 0) {
+                const dbNeedsFix = (Number(out.final_price) !== cFinal || Number(out.discount_pct) !== cDisc || Number(out.saved_amount) !== cSaved);
                 out.final_price = cFinal;
                 out.discount_pct = cDisc;
                 out.saved_amount = cSaved;
+                if (dbNeedsFix && out.id && !(window.__repairedOrderPriceIds && window.__repairedOrderPriceIds[out.id])) {
+                  window.__repairedOrderPriceIds = window.__repairedOrderPriceIds || {};
+                  window.__repairedOrderPriceIds[out.id] = true;
+                  __syncQueue.push({ id: out.id, discount_pct: cDisc, saved_amount: cSaved, final_price: cFinal });
+                }
               }
             }
             return out;
           });
+          if (__syncQueue.length > 0 && supabaseClient) {
+            __syncQueue.forEach(item => {
+              supabaseClient.from('orders').update({
+                discount_pct: item.discount_pct,
+                saved_amount: item.saved_amount,
+                final_price: item.final_price
+              }).eq('id', item.id).then(() => {}).catch(() => {});
+            });
+          }
           updateConnectionUI(true);
           updateDashboardStatsAndBadges();
           renderQuickOrderChips();
