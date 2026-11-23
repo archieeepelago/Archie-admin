@@ -3593,7 +3593,17 @@ create policy "Allow public read/write orders" on public.orders
     async function adminActionSendQris(orderId) {
       const order = allOrders.find(o => String(o.id) === String(orderId));
       const draft = orderDraftState[orderId] || {};
-      const qrisUrl = (draft.qrisImageUrl || (order && order.qris_image_url) || '').trim();
+      let qrisUrl = (draft.qrisImageUrl || (order && order.qris_image_url) || '').trim();
+
+      if (qrisUrl && qrisUrl.startsWith('data:image') && typeof uploadQrisDataUrlToStorage === 'function') {
+        try {
+          const uploadedUrl = await uploadQrisDataUrlToStorage(orderId, qrisUrl);
+          if (uploadedUrl) {
+            qrisUrl = uploadedUrl;
+            if (orderDraftState[orderId]) orderDraftState[orderId].qrisImageUrl = qrisUrl;
+          }
+        } catch (_) {}
+      }
 
       const patchPayload = {
         status: 'QRIS_SENT',
@@ -3608,15 +3618,23 @@ create policy "Allow public read/write orders" on public.orders
       try {
         const client = getSupabaseClient();
         let ok = false;
+        let lastErr = '';
         if (client) {
           const { error } = await client.from('orders').update(patchPayload).eq('id', orderId);
           if (!error) ok = true;
+          else lastErr = error.message || String(error);
         }
         if (!ok) {
           await supabaseRestRequest(`orders?id=eq.${encodeURIComponent(orderId)}`, {
             method: 'PATCH',
             body: JSON.stringify(patchPayload)
           });
+          ok = true;
+        }
+        if (ok) {
+          showAdminToast(qrisUrl ? '✅ Foto QRIS berhasil dikirim ke Web Customer!' : '✅ Status QRIS terkirim (tanpa foto).');
+        } else if (lastErr) {
+          showAdminToast('⚠️ Gagal kirim QRIS ke server: ' + lastErr, true);
         }
       } catch (e) {}
 
