@@ -1968,7 +1968,11 @@ create policy "Allow public read/write orders" on public.orders
       const modals = document.querySelectorAll('[id$="Modal"], [id$="Overlay"]');
       for (const m of modals) {
         if (m.id === 'adminAuthOverlay') continue;
-        if (!m.classList.contains('hidden') && m.classList.contains('fixed')) return true;
+        if (m.classList.contains('modal-backdrop')) {
+          if (m.classList.contains('open')) return true;
+        } else if (!m.classList.contains('hidden') && m.classList.contains('fixed')) {
+          if (window.getComputedStyle && window.getComputedStyle(m).display !== 'none') return true;
+        }
       }
       return false;
     }
@@ -1983,14 +1987,15 @@ create policy "Allow public read/write orders" on public.orders
       return false;
     }
     function renderOrdersList(forceRender = false) {
-      if (!forceRender) {
+      const container = document.getElementById('ordersListContainer');
+      if (!container) return;
+
+      const hasRenderedCards = container.children.length > 0;
+      if (!forceRender && hasRenderedCards) {
         if (isAdminTypingInInput() || window.__arcTouchActive || isAnyAdminModalOpen()) return;
         if (Date.now() - (window.__arcLastInteractAt || 0) < 15000) return;
         if (hasActiveEditsInOrdersContainer()) return;
       }
-
-      const container = document.getElementById('ordersListContainer');
-      if (!container) return;
 
       const list = getFilteredOrders();
       // Fingerprint stabil: kalau tidak ada perubahan data pesanan di Supabase, JANGAN PERNAH wipe DOM!
