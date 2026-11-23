@@ -201,9 +201,8 @@
       #filterTabsContainer::-webkit-scrollbar { display: none; }
       #filterTabsContainer > * { flex-shrink: 0 !important; white-space: nowrap !important; }
       main { padding-left: 10px !important; padding-right: 10px !important; padding-top: 10px !important; }
-      section.grid.grid-cols-2:not(.hidden) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
-      #ordersListContainer:not(.hidden) { display: flex !important; flex-direction: column !important; gap: 12px !important; }
-      #ordersListContainer.hidden { display: none !important; }
+      section.grid.grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+      #ordersListContainer { width: 100%; }
       #ordersListContainer article[data-arc-card] { border-radius: 20px !important; width: 100% !important; }
       #ordersListContainer article[data-arc-card] > div.flex-1 { padding: 12px !important; }
       #ordersListContainer article[data-arc-card] .grid.grid-cols-1.sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 6px !important; }
@@ -5714,12 +5713,12 @@ create policy "Allow public read/write orders" on public.orders
       b.classList.toggle('active', b.getAttribute('data-ws') === ws);
     });
     if (ws === 'orders') {
-      originalSections.forEach(s => { if (s.id !== 'surpriseDrawerSection') s.style.display = ''; });
+      originalSections.forEach(s => { if (s.id !== 'surpriseDrawerSection') { s.style.display = ''; s.classList.remove('hidden'); } });
       extraPanelsWrap.classList.add('hidden');
       document.body.classList.remove('clean-shot-mode');
       cleanShot = false;
     } else {
-      originalSections.forEach(s => { s.style.display = 'none'; });
+      originalSections.forEach(s => { s.style.display = 'none'; s.classList.add('hidden'); });
       extraPanelsWrap.classList.remove('hidden');
       ['pantau', 'economy', 'orderfin', 'fh', 'love'].forEach(k => {
         const p = document.getElementById('wsPanel_' + k);
