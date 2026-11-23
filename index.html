@@ -1246,14 +1246,11 @@ create policy "Allow public read/write orders" on public.orders
     function buildCustomerWhatsAppTemplate(order) {
       if (!order) return '';
       const wInfo = parseWarrantyAndDurationFromOrder(order);
-      const cleanCustomerName = String(order.initials || 'Kakak')
-        .replace(/\s*👑\s*Donatur/gi, '')
-        .trim() || 'Kakak';
+      const cleanCustomerName = (typeof stripDonaturText === 'function' ? stripDonaturText(order.initials || 'Kakak') : String(order.initials || 'Kakak').replace(/\s*👑\s*Donatur/gi, '').trim()) || 'Kakak';
       const orderDigits = formatOrderDigitsOnly(order.id, order);
-      const cleanPlanOnly = String(wInfo.cleanPlan || '1 Bulan')
-        .replace(/\s*•\s*👑\s*Donatur\s*\([^)]+\)/gi, '')
-        .trim();
-      const orderType = `${order.product_name || 'Aplikasi Premium'} (${cleanPlanOnly})`;
+      const cleanPlanOnly = (typeof stripDonaturText === 'function' ? stripDonaturText(wInfo.cleanPlan || '1 Bulan') : String(wInfo.cleanPlan || '1 Bulan').replace(/\s*•\s*👑\s*Donatur\s*\([^)]+\)/gi, '').trim()) || '1 Bulan';
+      const cleanProdOnly = (typeof stripDonaturText === 'function' ? stripDonaturText(order.product_name || 'Aplikasi Premium') : String(order.product_name || 'Aplikasi Premium')) || 'Aplikasi Premium';
+      const orderType = `${cleanProdOnly} (${cleanPlanOnly})`;
       const totalPrice = formatRp(order.final_price || order.base_price || 0);
       const linkWebGaransi = getSavedGaransiBaseUrl();
 
@@ -2741,6 +2738,130 @@ create policy "Allow public read/write orders" on public.orders
       return out;
     }
 
+    function stripDonaturText(rawStr) {
+      return String(rawStr || '')
+        .replace(/\[[^\]]*\]/g, '')
+        .replace(/\(\s*(?:👑\s*)?(?:donatur|donasi)[^)]*\)/gi, '')
+        .replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi)(?:\s*\([^)]*\))?(?:\s*\+?\s*rp[\s\d.,]+)?/gi, '')
+        .replace(/\(\s*\+?\s*rp[\s\d.,]+\s*\)/gi, '')
+        .replace(/(?:[•|,+-]\s*)?\+\s*rp[\s\d.,]+/gi, '')
+        .replace(/👑/g, '')
+        .replace(/\s*[•|]\s*(?=[•|]|$)/g, '')
+        .replace(/^[•|,\-\s]+|[•|,\-\s]+$/g, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    }
+
+    function resolveAppTncForOrder(order) {
+      const fallback = 'Gunakan sesuai aturan paket, dilarang ubah email/password/profil di luar jatah, dan kirim screenshot bukti login awal maksimal 1x12 jam agar garansi aktif.';
+      if (!order) return fallback;
+      try {
+        const cms = (window.ArchieLiveCms && window.ArchieLiveCms.current)
+          ? window.ArchieLiveCms.current
+          : ((window.ArchieLiveCms && typeof window.ArchieLiveCms.getCached === 'function' ? window.ArchieLiveCms.getCached() : null) || window.ARCHIE_DEFAULT_CMS);
+        const cat = (cms && Array.isArray(cms.catalog)) ? cms.catalog : [];
+        const target = stripDonaturText(order.product_name || '').toLowerCase();
+        const found = cat.find(item => {
+          const nm = String(item && item.name || '').toLowerCase();
+          return nm && target && (nm === target || nm.includes(target) || target.includes(nm));
+        });
+        if (found && Array.isArray(found.tncPoints) && found.tncPoints.length > 0) {
+          return found.tncPoints.map(p => String(p || '').trim()).filter(Boolean).join(' • ');
+        }
+      } catch (_) {}
+      return fallback;
+    }
+
+    function splitCleanPlanAndDuration(cleanPlanStr) {
+      const clean = stripDonaturText(cleanPlanStr) || '1 Bulan';
+      const planParts = clean.split(/\s*[•|]\s*/).filter(Boolean);
+      let subscriptionType = '';
+      let durationOnly = clean;
+      if (planParts.length >= 2) {
+        durationOnly = planParts[planParts.length - 1];
+        subscriptionType = planParts.slice(0, -1).join(' • ');
+      } else {
+        const durMatch = clean.match(/(\d+\s*(?:hari|minggu|bulan|tahun|bln|thn|hr|day|month|year)s?)/i);
+        if (durMatch) {
+          durationOnly = durMatch[1].trim();
+          subscriptionType = clean.replace(durMatch[0], '').replace(/[-•|,\s]+$/g, '').replace(/^[-•|,\s]+/g, '').trim();
+        }
+      }
+      if (!subscriptionType) subscriptionType = 'Reguler / Standard';
+      return { cleanPlan: clean, subscriptionType, durationOnly };
+    }
+
+    function applyAllTemplateVariables(tplStr, order, opts = {}) {
+      const o = order || {};
+      const wInfo = opts.wInfo || parseWarrantyAndDurationFromOrder(o);
+      const wibMeta = opts.wibMeta || (typeof getAdminRealtimeWibMeta === 'function' ? getAdminRealtimeWibMeta() : { greeting: 'Pagi', timeStr: '-' });
+      const code = formatOrderCode(o.id, o);
+      const pin = (typeof getOrderAccessPin === 'function' ? getOrderAccessPin(o) : '') || o.access_pin || '-';
+      const garUrlInput = document.getElementById('garansiWebUrlInput');
+      const wBase = (garUrlInput && garUrlInput.value.trim())
+        ? garUrlInput.value.trim()
+        : ((typeof WARRANTY_PORTAL_URL !== 'undefined' && WARRANTY_PORTAL_URL) ? WARRANTY_PORTAL_URL : ['https:/', 's.id', 'archie-garansi'].join('/'));
+      const wUrl = wBase.includes('?') ? wBase : `${wBase}?code=${encodeURIComponent(code)}`;
+      const expStr = (wInfo && wInfo.expiresAtMs)
+        ? new Date(wInfo.expiresAtMs).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
+        : '-';
+
+      const cleanCustomer = stripDonaturText(o.initials || 'Kakak') || 'Kakak';
+      const cleanProduct = stripDonaturText(o.product_name || 'Aplikasi Premium') || 'Aplikasi Premium';
+      const rawPlanSrc = (wInfo && wInfo.cleanPlan) ? wInfo.cleanPlan : (o.plan_label || '1 Bulan');
+      const planSplit = splitCleanPlanAndDuration(rawPlanSrc);
+      const rawFhName = (opts.fhObj && opts.fhObj.name) ? String(opts.fhObj.name) : (opts.fhName || '');
+      const cleanFhName = rawFhName
+        .replace(/^\s*fh\b[\s\-:•|]*/i, '')
+        .replace(/\b(?:fh|supplier)\b/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+      const rawCustInput = opts.custInputVal !== undefined ? String(opts.custInputVal || '') : (() => {
+        const m = String(o.plan_label || '').match(/\|CUST_DATA:([^|\]]+)/i);
+        return m ? m[1].trim() : '';
+      })();
+      const parsed = parseStructuredCustData(rawCustInput);
+      const discPct = Number(o.discount_pct || 0);
+      const savedAmt = Number(o.saved_amount || 0);
+      const discInfo = discPct > 0
+        ? `Diskon ${discPct}%${savedAmt > 0 ? ` (-${formatRp(savedAmt)})` : ''}`
+        : 'Tanpa Diskon';
+      const totalPriceStr = formatRp(o.final_price || o.base_price || 0);
+      const appTncStr = resolveAppTncForOrder(o);
+
+      let out = String(tplStr || '')
+        .replace(/\{greeting_wib\}|\{waktu\}/gi, wibMeta.greeting || 'Pagi')
+        .replace(/\{time_wib\}|\{jam\}/gi, wibMeta.timeStr || '-')
+        .replace(/\{fh_name\}|\{nama_fh\}|\{nama\s*fh\}/gi, cleanFhName)
+        .replace(/\b(Kakk?)\s+([,!.\n])/g, '$1$2')
+        .replace(/\{order_code\}|\{kode_pesanan\}/gi, code)
+        .replace(/\{customer_name\}|\{nama_customer\}|\{nama\}/gi, cleanCustomer)
+        .replace(/\{product_name\}|\{produk\}/gi, cleanProduct)
+        .replace(/\{subscription_type\}|\{tipe_langganan\}/gi, planSplit.subscriptionType)
+        .replace(/\{duration_label\}|\{durasi\}/gi, planSplit.durationOnly)
+        .replace(/\{plan_label\}|\{paket\}/gi, opts.useDurationForPlan ? planSplit.durationOnly : planSplit.cleanPlan)
+        .replace(/\{total_price\}|\{total\}|\{harga\}/gi, totalPriceStr)
+        .replace(/\{discount_info\}|\{diskon\}/gi, discInfo)
+        .replace(/\{discount_pct\}/gi, `${discPct}%`)
+        .replace(/\{saved_amount\}/gi, formatRp(savedAmt))
+        .replace(/\{device\}/gi, parsed.device || '-')
+        .replace(/\{gmail\}/gi, parsed.gmail || '-')
+        .replace(/\{password\}/gi, parsed.pass || '-')
+        .replace(/\{phone\}/gi, parsed.phone || '-')
+        .replace(/\{warranty_url\}|\{link_garansi\}/gi, wUrl)
+        .replace(/\{pin\}|\{access_pin\}/gi, pin)
+        .replace(/\{exp_date\}|\{expired\}|\{tanggal_expired\}/gi, expStr)
+        .replace(/\{app_tnc\}|\{tnc\}/gi, appTncStr);
+
+      if (opts.condBlock !== undefined) {
+        out = out.replace(/\{customer_input\}\n?|\{data_customer\}\n?/gi, opts.condBlock ? (opts.condBlock + '\n\n') : '\n');
+      } else {
+        out = out.replace(/\{customer_input\}|\{data_customer\}/gi, rawCustInput || '-');
+      }
+      return out.replace(/\n{4,}/g, '\n\n\n').trim();
+    }
+
     function buildFhOrderConvertedText(order, fhObj, custInputVal, wibMeta, tplStr) {
       const code = formatOrderCode(order.id, order);
       const wInfo = parseWarrantyAndDurationFromOrder(order);
@@ -2805,47 +2926,22 @@ create policy "Allow public read/write orders" on public.orders
         .replace(/\b(?:fh|supplier)\b/gi, '')
         .replace(/\s{2,}/g, ' ')
         .trim();
-      let rendered = tpl
-        .replace(/\{greeting_wib\}|\{waktu\}/gi, wibMeta.greeting)
-        .replace(/\{time_wib\}/gi, wibMeta.timeStr)
-        .replace(/\{fh_name\}|\{nama\s*fh\}/gi, fhName)
-        .replace(/\b(Kakk?)\s+([,!.\n])/g, '$1$2')
-        .replace(/\{order_code\}/gi, code)
-        .replace(/\{customer_name\}/gi, String(order.initials || 'Customer').replace(/\s*👑\s*Donatur/i, '').trim())
-        .replace(/\{product_name\}/gi, cleanFhProduct)
-        .replace(/\{subscription_type\}|\{tipe_langganan\}/gi, subscriptionType)
-        .replace(/\{duration_label\}|\{durasi\}/gi, durationOnly)
-        .replace(/\{plan_label\}/gi, durationOnly)
-        .replace(/\{total_price\}/gi, formatRp(order.final_price || 0))
-        .replace(/\{device\}/gi, parsed.device || '-')
-        .replace(/\{gmail\}/gi, parsed.gmail || '-')
-        .replace(/\{password\}/gi, parsed.pass || '-')
-        .replace(/\{phone\}/gi, parsed.phone || '-')
-        .replace(/\{customer_input\}\n?/gi, condBlock ? (condBlock + '\n\n') : '\n');
-      return rendered.replace(/\n{4,}/g, '\n\n\n').trim();
+      return applyAllTemplateVariables(tpl, order, {
+        wInfo,
+        wibMeta,
+        fhObj,
+        custInputVal,
+        condBlock,
+        useDurationForPlan: true
+      });
     }
 
     function buildCopywritingConvertedText(order, tplStr, custInputVal, wibMeta, wInfo) {
-      const code = formatOrderCode(order.id, order);
-      const pin = (typeof getOrderAccessPin === 'function') ? getOrderAccessPin(order) : (order.access_pin || '-');
-      const wBase = (typeof WARRANTY_PORTAL_URL !== 'undefined' && WARRANTY_PORTAL_URL) ? WARRANTY_PORTAL_URL : ['https:/', 's.id', 'archie-garansi'].join('/');
-      const wUrl = `${wBase}?code=${encodeURIComponent(code)}`;
-      const expStr = (wInfo && wInfo.expiresAtMs)
-        ? new Date(wInfo.expiresAtMs).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
-        : '-';
-      return String(tplStr || '')
-        .replace(/\{greeting_wib\}/gi, wibMeta.greeting)
-        .replace(/\{time_wib\}/gi, wibMeta.timeStr)
-        .replace(/\{order_code\}/gi, code)
-        .replace(/\{customer_name\}/gi, String(order.initials || 'Customer').replace(/(?:[•|,+-]\s*)?(?:👑\s*)?donatur/gi, '').trim())
-        .replace(/\{product_name\}/gi, String(order.product_name || 'Aplikasi Premium').replace(/(?:[•|,+-]\s*)?(?:👑\s*)?donatur/gi, '').trim())
-        .replace(/\{plan_label\}/gi, String((wInfo && wInfo.cleanPlan) ? wInfo.cleanPlan : '1 Bulan').replace(/(?:[•|,+-]\s*)?(?:👑\s*)?(?:donatur|donasi(?:\s*rp[\d.,]+)?)/gi, '').replace(/\(\s*(?:👑\s*)?(?:donatur|donasi[^)]*)\s*\)/gi, '').replace(/^[•|,\-\s]+|[•|,\-\s]+$/g, '').trim() || '1 Bulan')
-        .replace(/\{total_price\}/gi, formatRp(order.final_price || 0))
-        .replace(/\{customer_input\}/gi, custInputVal || '-')
-        .replace(/\{warranty_url\}/gi, wUrl)
-        .replace(/\{pin\}/gi, pin)
-        .replace(/\{access_pin\}/gi, pin)
-        .replace(/\{exp_date\}/gi, expStr);
+      return applyAllTemplateVariables(tplStr, order, {
+        wInfo,
+        wibMeta,
+        custInputVal
+      });
     }
 
     function bindOrderCardEvents() {
@@ -3353,10 +3449,13 @@ create policy "Allow public read/write orders" on public.orders
           const ord = allOrders.find(o => String(o.id) === String(id));
           if (!ord) return;
           const wInfo = parseWarrantyAndDurationFromOrder(ord);
-          const code = formatOrderCode(ord.id);
+          const code = formatOrderCode(ord.id, ord);
+          const cleanName = stripDonaturText(ord.initials || '') || 'Kakak';
+          const cleanProd = stripDonaturText(ord.product_name || 'Aplikasi Premium') || 'Aplikasi Premium';
+          const cleanPlan = stripDonaturText(wInfo.cleanPlan || '1 Bulan') || '1 Bulan';
           const msg = ord.status === 'PAID'
-            ? `Halo kak ${ord.initials || ''}! Pembayaran ${formatRp(ord.final_price)} untuk ${ord.product_name} (${wInfo.cleanPlan}) dengan No. Pesanan ${code} sudah LUNAS yaa~ 🐰💗 Tiket Garansi & pengingat durasi real-time kakak bisa dicek kapan saja pakai kode ${code}!`
-            : `Halo kak ${ord.initials || ''}! Rincian pesanan ${code} — ${ord.product_name} (${wInfo.cleanPlan}) setelah diskon spin ${ord.discount_pct || 0}% jadi total ${formatRp(ord.final_price)} yaa~ Kode QRIS dinamisnya sudah Mimin kirim di web, silakan di-scan sebelum 5 menit habis! 🐰✨`;
+            ? `Halo kak ${cleanName}! Pembayaran ${formatRp(ord.final_price)} untuk ${cleanProd} (${cleanPlan}) dengan No. Pesanan ${code} sudah LUNAS yaa~ 🐰💗 Tiket Garansi & pengingat durasi real-time kakak bisa dicek kapan saja pakai kode ${code}!`
+            : `Halo kak ${cleanName}! Rincian pesanan ${code} — ${cleanProd} (${cleanPlan}) setelah diskon spin ${ord.discount_pct || 0}% jadi total ${formatRp(ord.final_price)} yaa~ Kode QRIS dinamisnya sudah Mimin kirim di web, silakan di-scan sebelum 5 menit habis! 🐰✨`;
           copyToClipboard(msg, 'Template balasan chat');
         });
       });
@@ -4390,21 +4489,10 @@ create policy "Allow public read/write orders" on public.orders
         : (window.ArchieLiveCms && typeof window.ArchieLiveCms.getCached === 'function' ? window.ArchieLiveCms.getCached() : null);
       const customTpl = cms && cms.adminUi && typeof cms.adminUi.waHandoverTemplate === 'string' && cms.adminUi.waHandoverTemplate.trim();
       if (customTpl && order) {
-        const wInfo = parseWarrantyAndDurationFromOrder(order);
-        const code = formatOrderCode(order.id, order);
-        const garUrlInput = document.getElementById('garansiWebUrlInput');
-        const baseGarUrl = (garUrlInput && garUrlInput.value.trim()) ? garUrlInput.value.trim() : window.location.origin;
-        const pinVal = order.access_pin || '-';
-        const expDateStr = wInfo.expiresAtMs ? new Date(wInfo.expiresAtMs).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
-        return customTpl
-          .replace(/\{order_code\}/gi, code)
-          .replace(/\{customer_name\}/gi, order.initials || 'Kak Customer')
-          .replace(/\{product_name\}/gi, order.product_name || 'Aplikasi Premium')
-          .replace(/\{plan_label\}/gi, wInfo.cleanPlan || '1 Bulan')
-          .replace(/\{warranty_url\}/gi, baseGarUrl)
-          .replace(/\{pin\}/gi, pinVal)
-          .replace(/\{access_pin\}/gi, pinVal)
-          .replace(/\{exp_date\}/gi, expDateStr);
+        return applyAllTemplateVariables(customTpl, order, {
+          wInfo: parseWarrantyAndDurationFromOrder(order),
+          wibMeta: typeof getAdminRealtimeWibMeta === 'function' ? getAdminRealtimeWibMeta() : { greeting: 'Pagi', timeStr: '-' }
+        });
       }
       let tpl = origBuildWa(order);
       if (order && order.access_pin && !tpl.includes(order.access_pin)) {
