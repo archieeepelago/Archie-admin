@@ -187,16 +187,26 @@
     button, a, input, select, textarea { touch-action: manipulation; }
     article[data-arc-card] { touch-action: pan-y; }
     body { padding-bottom: max(24px, env(safe-area-inset-bottom, 0px)); }
-    /* Jalan tengah Mac-like compact UI di HP (dan otomatis full Mac UI saat Request Desktop Website di Safari!) */
+    /* Multi-column 2-3 grid vibe di HP (dan otomatis full Mac UI saat Request Desktop Website di Safari!) */
     @media (max-width: 767px) {
-      header > div { padding: 8px 12px !important; gap: 6px !important; }
+      header > div { padding: 8px 10px !important; gap: 6px !important; }
       header > div > div:last-child { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; width: 100%; padding-bottom: 2px; scrollbar-width: none; }
       header > div > div:last-child::-webkit-scrollbar { display: none; }
       header > div > div:last-child > * { flex-shrink: 0 !important; white-space: nowrap !important; }
       #filterTabsContainer { flex-wrap: nowrap !important; overflow-x: auto !important; -webkit-overflow-scrolling: touch; padding-bottom: 2px; scrollbar-width: none; }
       #filterTabsContainer::-webkit-scrollbar { display: none; }
       #filterTabsContainer > * { flex-shrink: 0 !important; white-space: nowrap !important; }
-      main { padding-left: 10px !important; padding-right: 10px !important; padding-top: 10px !important; }
+      main { padding-left: 8px !important; padding-right: 8px !important; padding-top: 10px !important; }
+      #ordersListContainer { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px !important; }
+      #ordersListContainer > * { margin-top: 0 !important; }
+      #ordersListContainer article[data-arc-card] { border-radius: 16px !important; }
+      #ordersListContainer article[data-arc-card] > div.flex-1 { padding: 8px !important; }
+      #ordersListContainer article[data-arc-card] .text-sm { font-size: 11px !important; line-height: 1.25 !important; }
+      #ordersListContainer article[data-arc-card] .text-base { font-size: 12px !important; }
+      #ordersListContainer article[data-arc-card] .text-\[11px\], #ordersListContainer article[data-arc-card] .text-\[10\.5px\] { font-size: 9.5px !important; }
+      #ordersListContainer article[data-arc-card] button[data-action="arc-slide-set"] { min-width: 58px !important; padding: 3px 6px !important; font-size: 8.5px !important; }
+      #ordersListContainer > div.sweet-card { grid-column: 1 / -1 !important; }
+      section.grid.grid-cols-2 { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 6px !important; }
     }
   </style>
 </head>
@@ -1966,7 +1976,7 @@ create policy "Allow public read/write orders" on public.orders
       const list = getFilteredOrders();
       // Fingerprint stabil: kalau tidak ada perubahan data pesanan, JANGAN wipe DOM (anti ke-reset & anti ketarik balik!)
       const renderSig = JSON.stringify([
-        activeFilter, searchQuery, window.__arcSlideState || {}, window.__arcSelectedFh || {}, window.__arcSelectedCw || {},
+        currentFilter, searchQuery, window.__arcSlideState || {}, window.__arcSelectedFh || {}, window.__arcSelectedCw || {},
         list.map(o => [o.id, o.status, o.plan_label, o.final_price, o.discount_pct, o.product_name, o.initials, o.access_pin, o.warranty_status, o.delivered_at, o.expires_at, o.feedback_rating, o.feedback_note])
       ]);
       if (!forceRender && renderSig === __lastOrdersRenderSig) return;
