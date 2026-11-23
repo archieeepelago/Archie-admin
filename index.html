@@ -2848,14 +2848,33 @@ create policy "Allow public read/write orders" on public.orders
         });
       });
 
-      // Slide 2: Select FH Supplier & Live Convert
+      // Slide 2: Select FH Supplier & Live Convert (IN-PLACE tanpa wipe DOM!)
       container.querySelectorAll('button[data-action="select-arc-fh"]').forEach(btn => {
         btn.addEventListener('click', () => {
           const id = btn.getAttribute('data-id');
           const fIdx = Number(btn.getAttribute('data-fh-idx') || 0);
           window.__arcSelectedFh = window.__arcSelectedFh || {};
           window.__arcSelectedFh[id] = fIdx;
-          renderOrdersList(true);
+          window.__arcLastInteractAt = Date.now();
+          const card = container.querySelector(`article[data-arc-card="${id}"]`);
+          const order = allOrders.find(o => String(o.id) === String(id));
+          if (!card || !order) return;
+          const cmsLive = (window.ArchieLiveCms && window.ArchieLiveCms.getCached) ? window.ArchieLiveCms.getCached() : (window.ARCHIE_DEFAULT_CMS || {});
+          const admUi = (cmsLive && cmsLive.adminUi) ? cmsLive.adminUi : ((window.ARCHIE_DEFAULT_CMS && window.ARCHIE_DEFAULT_CMS.adminUi) || {});
+          const fhDir = Array.isArray(admUi.fhDirectory) ? admUi.fhDirectory : [];
+          const activeFh = fhDir[fIdx] || { name: 'FH Supplier', contact: '', specialty: 'Semua App' };
+          const rawPlan = String(order.plan_label || '');
+          const mCust = rawPlan.match(/CUST_DATA:([^|\]]+)/i);
+          const outEl = card.querySelector(`textarea[data-fh-output="${id}"]`);
+          if (outEl) {
+            const nextTxt = buildFhOrderConvertedText(order, activeFh, mCust ? mCust[1].trim() : '', getAdminRealtimeWibMeta(), admUi.fhOrderTemplate);
+            outEl.value = nextTxt;
+            if (window.__arcTextDrafts) window.__arcTextDrafts['fh:' + id] = nextTxt;
+          }
+          card.querySelectorAll(`button[data-action="select-arc-fh"][data-id="${id}"]`).forEach(b => {
+            const isAct = Number(b.getAttribute('data-fh-idx') || 0) === fIdx;
+            b.className = 'w-full text-left px-2.5 py-2 rounded-xl border text-[10.5px] transition cursor-pointer ' + (isAct ? 'bg-[#4A2036] text-[#FFE066] border-[#4A2036] shadow-xs' : 'bg-white hover:bg-[#FFF0F6] text-[#4A2036] border-[#EAD0DC]');
+          });
         });
       });
       container.querySelectorAll('input[data-action="custom-fh-name"]').forEach(inp => {
@@ -4139,7 +4158,7 @@ create policy "Allow public read/write orders" on public.orders
       if (Array.isArray(allOrders)) {
         allOrders = allOrders.filter(o => !o.deleted_at);
         renderQuickOrderChips();
-        renderOrdersList(true);
+        renderOrdersList(false);
         updateDashboardStatsAndBadges();
       }
     };
